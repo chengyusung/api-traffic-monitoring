@@ -1,10 +1,13 @@
 from typing import Literal
 
-from pydantic import Field, SecretStr
-from pydantic_settings import BaseSettings
+from pydantic import Field, SecretStr, field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    # A rejected value is often a secret, so errors name the field but never echo the input.
+    model_config = SettingsConfigDict(hide_input_in_errors=True)
+
     database_url: SecretStr
     db_pool_size: int = 5
     db_max_overflow: int = 10
@@ -22,6 +25,13 @@ class Settings(BaseSettings):
     demo_user_password: SecretStr | None = None
     demo_viewer_email: str | None = None
     demo_viewer_password: SecretStr | None = None
+
+    @field_validator("jwt_secret_key")
+    @classmethod
+    def reject_placeholder(cls, value: SecretStr) -> SecretStr:
+        if "change-me" in value.get_secret_value():
+            raise ValueError("replace the .env.example placeholder with `openssl rand -hex 32`")
+        return value
 
 
 settings = Settings()

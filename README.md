@@ -74,7 +74,7 @@ flowchart LR
 
 ```bash
 git clone <repo-url> && cd api-traffic-monitoring
-cp .env.example .env            # 至少修改 JWT_SECRET_KEY 與密碼
+cp .env.example .env            # 至少修改 JWT_SECRET_KEY（openssl rand -hex 32）與密碼
 docker compose up --build       # 第一次約 2–3 分鐘
 ```
 
