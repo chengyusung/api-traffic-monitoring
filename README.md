@@ -302,6 +302,7 @@ docker compose exec api ruff check . && docker compose exec api ruff format --ch
 - compose 的 healthcheck 用 `CMD-SHELL`，因為 Podman 把 exec 形式的 `python -c` 引數切開。Docker Engine 上沒有驗證過，GitHub Actions 也還沒有跑過。
 - 所有 DB 連線層級錯誤與 1020（snapshot conflict）都回 503 `Database unavailable`；1020 實際上是可重送的衝突，用 409 會更精確。其他 DB 錯誤回 500。
 - 上傳的 `Content-Length` 超過 `IMPORT_MAX_BYTES` 加 64 KiB（multipart 的包裝）時，api 在讀取 body 之前回 413。chunked 上傳沒有 `Content-Length`，Starlette 仍會先緩衝整個檔案，之後才以 422 拒絕；要在邊界擋住它，需要 reverse proxy 的大小限制。
+- Excel 匯出把每個文字欄位寫成文字儲存格，所以 `=`、`+`、`-`、`@` 開頭的 title 在 Excel 裡不會變成公式。title 不接受 C0 控制字元（U+0000 到 U+001F，包括 tab 與換行），`POST /records`、`PATCH /records/{id}` 與匯入都回 422；規則生效前已存進 DB 的控制字元，匯出時會被移除。
 - Streamlit 側欄對所有角色都列出 Admin 頁；非 ADMIN 點進去只看到提示，API 本身回 403。
 - `/admin/system` 的各表筆數在 api process 內快取 10 秒，所以是近似值；快取過期後的那一次仍對五張表做 count，資料量到百萬列時可能逼近 10 秒的 asyncmy `read_timeout`。
 - 前端單元測試（`WS-02` 用到的 AppTest）第一次在乾淨環境執行時，有一次因 10 秒逾時失敗，之後三次重跑都通過（0.6 到 0.7 秒），推測是冷啟動，未證實。逾時已改為 30 秒，CI 的冷啟動執行沒有驗證過。

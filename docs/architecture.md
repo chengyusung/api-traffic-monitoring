@@ -152,7 +152,8 @@ CSV / JSON 採 All-or-Nothing：先驗證所有列（欄位、Service slug、tim
 
 CSV 欄位：`event_id,service_slug,title,value,observed_at`；JSON 為同欄位的物件陣列。範例見 `data/sample_traffic.csv`、`data/sample_traffic.json`。
 
-- 行號：CSV 是檔案行號（標頭為第 1 行），JSON 是陣列中的第幾個（從 1 起算）；整個檔案的問題（大小、副檔名、編碼、標頭、列數）行號為 null。
+- 行號：CSV 是檔案的實體行號（標頭為第 1 行）。引號內含換行的欄位會讓一筆記錄跨多行，這時行號是該筆記錄結束的那一行。JSON 是陣列中的第幾個（從 1 起算）。整個檔案的問題（大小、副檔名、編碼、標頭、列數、沒有任何資料列、JSON 巢狀過深）行號為 null。
+- 同一個 `event_id` 在檔內出現兩次時，即使第一次出現的那列有別的錯誤，第二次仍會回報 `duplicates row N`。未知欄位以欄位名稱回報，最多 64 個字元。CSV 的 `value` 只有 1 到 12 位的整數會轉成數字，更長的字串直接是 `value` 的列錯誤。
 - 驗證失敗回 422 `VALIDATION_ERROR`，DB 已有 `event_id` 回 409 `CONFLICT`；兩者都在錯誤格式的 `details` 列出 `{row, field, message}`（最多 100 筆）。
 - `import_batches`：`failure_count` 是有錯誤的列數，`errors` 存同樣的清單。匯入的列 `source=IMPORT`、`created_by` 為上傳者；batch 先 flush 取得 id，所以每一列寫入時就帶著 `import_batch_id`。
 - `GET /imports/{id}` 只有上傳者與 ADMIN 看得到，其他人一律 404。
