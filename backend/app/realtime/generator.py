@@ -10,7 +10,6 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Protocol
 
-from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.ingestion.buffer import IngestionBuffer, IngestionEvent, WriterState
@@ -85,7 +84,8 @@ class Generator:
         try:
             async with self._session_factory() as session:
                 rows = await api_services.list_all(session)
-        except SQLAlchemyError as exc:
+        except Exception as exc:
+            # Any failure, not only SQLAlchemyError: an exception here would end the reload task.
             self.db_ok = False
             logger.warning(
                 "threshold reload failed; keeping the last loaded map",

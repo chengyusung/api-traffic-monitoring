@@ -14,10 +14,12 @@ from app.pipeline import Pipeline
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.pipeline = pipeline = Pipeline.create(SessionLocal)
-    await pipeline.start()
-    yield
-    await pipeline.stop()
-    await engine.dispose()
+    try:
+        await pipeline.start()
+        yield
+    finally:
+        await pipeline.stop()
+        await engine.dispose()
 
 
 def create_app() -> FastAPI:
