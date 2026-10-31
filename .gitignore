@@ -1,0 +1,21 @@
+# env / secrets
+.env
+*.pem
+
+# python / uv
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# local workflow files
+.audit/
+.claude/
+todo.md
+
+# os / editor
+.DS_Store
+.idea/
+.vscode/
