@@ -37,5 +37,5 @@ def require_roles(*roles: Role) -> Callable[[User], Awaitable[User]]:
     return check
 
 
-Writer = Annotated[User, Depends(require_roles(Role.ADMIN, Role.USER))]
+WriterRole = Annotated[User, Depends(require_roles(Role.ADMIN, Role.USER))]
 Admin = Annotated[User, Depends(require_roles(Role.ADMIN))]
