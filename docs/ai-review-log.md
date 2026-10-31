@@ -63,3 +63,22 @@
   - 測試能抓錯的證據（本機 `uv run pytest` 連 compose 的 MariaDB）：把 `UTCDateTime` 的 `astimezone(UTC)` 拿掉，TZ-01 失敗於 `datetime(2026, 10, 31, 16, 0, 4) == datetime(2026, 10, 31, 8, 0, 4)`；拿掉 naive 檢查，失敗於 `DID NOT RAISE StatementError`。兩者還原後 12 passed。
   - asyncmy 確實執行 `init_command`：同一個 DB 上 `select(func.timediff(func.now(), func.utc_timestamp()))`，app engine 回 `0:00:00`，改用 `SET time_zone='+08:00'` 的 engine 回 `8:00:00`。
   - GitHub Actions：NOT RUN（本機無法執行）；只在本機跑過 workflow 內的 `uvx ruff@0.17.3 check / format --check backend frontend`，exit 0。
+
+### R-005 M02 Auth / Records
+
+- 任務：M02。Argon2id 密碼雜湊、HS256 JWT（`sub`、`role`、`exp`、`iat`、`jti`）、`get_current_user`（每個 request 依 `sub` 重讀 DB、用 DB 的 role 授權、DB 不可用回 503）、`require_roles`；`/auth/register`、`/auth/token`、`/auth/me`；啟動步驟 `ensure_services` → `bootstrap_admin` → `seed_demo`；`GET /services`、`PATCH /services/{id}`；`/records` CRUD、bulk、分頁 / 篩選 / 排序、Ownership；登入、註冊、threshold 變更、record value 修改與刪除的稽核。
+- AI 產出：`app/bootstrap.py` 以 `logger.info("ensure_services", extra={"created": ...})` 記錄每個步驟；API 測試用 `request.getfixturevalue("user_a")` 依參數取身分 fixture；`POST /records` 直接回傳寫入的 ORM 物件；list 的 `sort=created_at` 對應到 `persisted_at`。
+- 審查：在 Podman 上實際 `docker compose up --build`；對 compose 內的 MariaDB 跑全部測試；用 curl 對照 POST 與 GET 的回覆；逐項比對 ADR-002 角色矩陣與 architecture.md §5.1、§6；對關鍵規則做 mutation check，確認測試真的會抓錯。
+- 發現與修正：
+  1. 第一次 `docker compose up --build -d` exit 1，api log 是 `KeyError: "Attempt to overwrite 'created' in LogRecord"`。原因：`created` 是 `logging.LogRecord` 的保留屬性，不能放進 `extra`。改成 `inserted`。這次中斷發生在 `ensure_services` commit 之後、`bootstrap_admin` 之前；修正後重跑，已建立的 Service 沒有重複，剩下的步驟補齊，等於順便驗證了步驟中途中斷後重跑會收斂。修正在 commit `75252ae`。
+  2. 第一次跑 pytest：`RuntimeError: Runner.run() cannot be called from a running event loop`。原因：pytest-asyncio 1.4.1 不能在 async 測試裡用 `request.getfixturevalue` 取 async fixture。改成 `identities` fixture，一次提供 ADMIN、USER A、USER B、VIEWER 四個身分。修正在 commit `3b7c24b`。
+  3. curl 對照：`POST /records` 送 `+08:00` 的 `observed_at`，回覆保留 `+08:00`；`GET` 同一筆回 `Z`。兩者是同一個時間點，但同一個資源有兩種表示。改成在 schema 邊界（`UTCInstant`）把 `observed_at`、`start`、`end` 轉成 UTC。修正在 commit `6cf28a0`。
+  4. 文件缺口，沒有自行決定：architecture.md §6 的 sort allowlist 有 `created_at`，§5.1 的 `traffic_records` 卻沒有這個欄位。目前 `created_at` 對應到 `persisted_at`（系統建立該列的時間），程式內有註解。要改 §6、改 sort key 名稱，還是加欄位與 migration，需要另外決定。
+  5. SQLAlchemy 2.1 對 `Result.tuples()` 發出 `SADeprecationWarning`，改成直接用 `.all()`。
+- 驗證（Podman 5.7.1、`docker compose`、MariaDB 11.7）：
+  - `docker compose down -v` 後 `docker compose up --build -d` exit 0；db、api、frontend 皆 healthy。api log：`ensure_services` inserted `auth, orders, payment`；`bootstrap_admin` inserted true；`seed_demo` inserted 兩個 demo 帳號。`docker compose restart api` 後三步皆為空 / false，DB 內 ADMIN、USER、VIEWER 各 1，Service 3 筆。
+  - `docker compose exec -T api pytest -q` exit 0，120 passed，0 skipped（含 M01 的 integration 測試）。新增：`tests/unit/test_record_rules.py`、`tests/api/test_auth.py`、`tests/api/test_services.py`、`tests/api/test_records.py`、`tests/integration/test_bootstrap.py`。`alembic check`（`test_migrations.py`）通過，M02 沒有新 migration。
+  - `docker compose exec -T api ruff check .`、`ruff format --check .` 皆 exit 0。
+  - curl：admin 取 token 後 `GET /api/v1/records?page_size=5` 回 200 與 `{"items","page","page_size","total"}`；viewer `POST /api/v1/records` 回 403 `FORBIDDEN`，body 的 `request_id` 與 `X-Request-ID` 相同；register 帶 `"role":"ADMIN"` 回 422 `VALIDATION_ERROR`。
+  - Mutation check（本機 `uv run pytest` 連 compose 的 MariaDB，每次改一處、跑完還原）：讓 USER 可改任何 record → 7 個測試失敗；threshold 改成 `>=` → 2 個失敗；value 修改時不重算、或改用 Service 目前的 threshold 重算 → 各 1 個失敗；decode 接受 `none` → `alg none` 測試失敗；拿掉角色檢查 → 4 個失敗；`UserRead` 加入 `password_hash` → conftest 的 response hook 讓 1 個測試失敗、49 個測試在建立身分時就 error；register 改成忽略多餘欄位 → 3 個失敗；不稽核登入失敗、允許停用帳號、DB 錯誤不轉 503 → 各 1 個失敗。拿掉 desc 排序的 `id` 次排序 → 1 個失敗；拿掉 asc 排序的 `id` 次排序 → 沒有測試失敗，因為 MariaDB 對相同值剛好依 PK 順序回傳，測試無法強迫它亂序。
+  - api log 中 grep `JWT_SECRET_KEY`、`ADMIN_PASSWORD`、兩個 demo 密碼、`MARIADB_PASSWORD` 的值，以及 `argon2`、`eyJ`（JWT 開頭），命中皆 0。
