@@ -313,3 +313,23 @@ async def test_a_cancelled_accept_hands_a_granted_reservation_back() -> None:
     await let_tasks_run()
     assert accepted.done(), "the cancelled accept() kept its reservation"
     assert buffer.take_nowait() == third
+
+
+@pytest.mark.parametrize("steps_before_cancel", [0, 1, 2])
+async def test_cancelling_accept_at_any_await_point_never_leaks_capacity(
+    steps_before_cancel: int,
+) -> None:
+    buffer = IngestionBuffer(capacity=1, clock=FakeClock())
+    accepting = asyncio.create_task(buffer.accept(event(1)))
+    for _ in range(steps_before_cancel):
+        await asyncio.sleep(0)
+    accepting.cancel()
+    with suppress(asyncio.CancelledError):
+        await accepting
+    if buffer.take_nowait() is not None:  # accepted before the cancel landed
+        buffer.release(1)
+
+    assert buffer.total_uncommitted == 0
+    later = asyncio.create_task(buffer.accept(event(2)))
+    await let_tasks_run()
+    assert later.done(), "a cancelled accept() kept its reservation"
