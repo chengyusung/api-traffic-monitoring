@@ -7,7 +7,9 @@ from pydantic import AfterValidator, AwareDatetime, BaseModel, ConfigDict, Field
 from app.models import RecordSource
 from app.schemas import NonNegativeInt, Pagination, PartialUpdate
 
-Title = Annotated[str, Field(min_length=1, max_length=255)]
+# No C0 control character: openpyxl refuses most of them, so one stored title would break every
+# export that covers its row.
+Title = Annotated[str, Field(min_length=1, max_length=255, pattern=r"^[^\x00-\x1f]*$")]
 
 
 def _to_utc(value: datetime) -> datetime:

@@ -45,6 +45,19 @@ def test_observed_at_is_converted_to_utc() -> None:
     assert observed_at.tzinfo is UTC
 
 
+@pytest.mark.parametrize("title", ["a\x00b", "bell\x07", "line\nbreak", "tab\there", "\x1f"])
+def test_title_rejects_c0_control_characters(title: str) -> None:
+    with pytest.raises(ValidationError, match="title"):
+        RecordCreate.model_validate({**VALID, "title": title})
+    with pytest.raises(ValidationError, match="title"):
+        RecordUpdate.model_validate({"title": title})
+
+
+def test_title_keeps_formula_like_and_non_ascii_text() -> None:
+    for title in ("=1+1", "@sum", "結帳 burst"):
+        assert RecordCreate.model_validate({**VALID, "title": title}).title == title
+
+
 def test_update_rejects_explicit_null() -> None:
     with pytest.raises(ValidationError, match="cannot be null: value"):
         RecordUpdate.model_validate({"value": None})

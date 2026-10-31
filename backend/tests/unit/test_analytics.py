@@ -1,7 +1,12 @@
 """SQL NULL and range semantics, so these run against the test MariaDB."""
 
+import tempfile
+import warnings
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
+import pytest
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.models import RecordSource, TrafficRecord
@@ -73,3 +78,35 @@ async def test_the_window_includes_start_and_excludes_end(
 
     assert summary.count == 2
     assert [(p.bucket_start, p.count) for p in trends] == [(T0, 2)]
+
+
+def spool_files() -> set[Path]:
+    return set(Path(tempfile.gettempdir()).glob("openpyxl.*"))
+
+
+async def test_a_failed_export_removes_its_spool_file_and_frees_the_cursor(
+    session_factory: async_sessionmaker[AsyncSession],
+    services: dict[str, int],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # More rows than one server-side fetch, so the cursor still has rows when the export fails.
+    rows = 1_001
+    await add_rows(
+        session_factory, services["auth"], *(T0 + timedelta(seconds=n) for n in range(rows))
+    )
+
+    def disk_full(*_: object) -> None:
+        raise OSError("disk full")
+
+    monkeypatch.setattr(analytics, "_append", disk_full)
+    before = spool_files()
+    async with session_factory() as session:
+        with pytest.raises(OSError, match="disk full"):
+            await analytics.export_xlsx(session, RecordFilters())
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            count = await session.scalar(select(func.count()).select_from(TrafficRecord))
+
+    # An unclosed streaming result makes the driver drain it, with a warning, on the next query.
+    assert (count, [str(w.message) for w in caught]) == (rows, [])
+    assert spool_files() == before

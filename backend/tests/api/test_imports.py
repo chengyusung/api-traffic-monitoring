@@ -68,6 +68,17 @@ async def test_a_rejected_file_returns_row_errors_in_the_error_envelope(
     assert records.json()["total"] == 0
 
 
+async def test_a_control_character_in_a_title_rejects_the_file(
+    client: AsyncClient, identities: dict[str, Identity], services: dict[str, int]
+) -> None:
+    content = b"event_id,service_slug,title,value,observed_at\n,auth,a\x01b,1,2026-10-31T08:00Z\n"
+
+    rejected = await upload(client, identities["user_a"], "control.csv", content)
+
+    assert rejected["status"] == 422
+    assert [(d["row"], d["field"]) for d in rejected["body"]["error"]["details"]] == [(2, "title")]
+
+
 async def test_an_existing_event_id_is_a_conflict_for_the_whole_file(
     client: AsyncClient, identities: dict[str, Identity], services: dict[str, int]
 ) -> None:

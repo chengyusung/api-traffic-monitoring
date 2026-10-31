@@ -1,11 +1,14 @@
 import asyncio
 import io
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from datetime import datetime
 from enum import Enum
 from typing import Any
 
 from openpyxl import Workbook
+from openpyxl.cell import WriteOnlyCell
+from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
+from openpyxl.worksheet._write_only import WriteOnlyWorksheet
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -53,17 +56,22 @@ async def trends(session: AsyncSession, query: TrendQuery) -> list[TrendPoint]:
     return [TrendPoint.model_validate(dict(row)) for row in rows]
 
 
-def _cell(value: Any) -> Any:
+def _cell(sheet: WriteOnlyWorksheet, value: Any) -> Any:
+    if isinstance(value, Enum):
+        value = value.value
     if isinstance(value, datetime):
         return value.replace(tzinfo=None)
-    if isinstance(value, Enum):
-        return value.value
+    if isinstance(value, str):
+        # Always text: a title such as "=HYPERLINK(...)" must not become a live formula.
+        cell = WriteOnlyCell(sheet, ILLEGAL_CHARACTERS_RE.sub("", value))
+        cell.data_type = "s"
+        return cell
     return value
 
 
-def _append(append: Callable[[list[Any]], None], rows: Sequence[Sequence[Any]]) -> None:
+def _append(sheet: WriteOnlyWorksheet, rows: Sequence[Sequence[Any]]) -> None:
     for row in rows:
-        append([_cell(value) for value in row])
+        sheet.append([_cell(sheet, value) for value in row])
 
 
 async def export_xlsx(session: AsyncSession, filters: RecordFilters) -> bytes:
@@ -81,9 +89,17 @@ async def export_xlsx(session: AsyncSession, filters: RecordFilters) -> bytes:
     sheet = workbook.create_sheet("records")
     sheet.append(EXPORT_HEADER)
     result = await analytics.stream_export(session, filters, settings.export_max_rows)
-    # Building cells is CPU work (about 35 ms per 1,000 rows); threads keep the event loop free.
-    async for rows in result.partitions():
-        await asyncio.to_thread(_append, sheet.append, rows)
     buffer = io.BytesIO()
-    await asyncio.to_thread(workbook.save, buffer)
+    try:
+        # Building cells is CPU work (about 35 ms per 1,000 rows); threads keep the loop free.
+        async for rows in result.partitions():
+            await asyncio.to_thread(_append, sheet, rows)
+        await asyncio.to_thread(workbook.save, buffer)
+    finally:
+        await result.close()
+        if not sheet.closed:
+            # The sheet spools to a temp file that only save() removes; Workbook.close() does
+            # not touch it in write-only mode.
+            sheet.close()
+            sheet._writer.cleanup()
     return buffer.getvalue()

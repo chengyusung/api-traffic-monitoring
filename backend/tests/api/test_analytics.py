@@ -134,6 +134,41 @@ async def test_export_is_an_xlsx_with_one_row_per_filtered_record(
     assert by_name[1]["is_anomaly"] is True
 
 
+async def export_titles(client: AsyncClient, viewer: Identity) -> dict[str, str]:
+    """Title -> openpyxl data type of its cell in the exported sheet."""
+    response = await client.get(f"{ANALYTICS}/export", headers=viewer.headers)
+    assert response.status_code == 200, response.text
+    sheet = load_workbook(io.BytesIO(response.content)).active
+    assert sheet is not None
+    header, *rows = sheet.iter_rows()
+    column = [cell.value for cell in header].index("title")
+    return {row[column].value: row[column].data_type for row in rows}
+
+
+async def test_an_exported_title_is_a_text_cell_even_when_it_looks_like_a_formula(
+    client: AsyncClient,
+    viewer: Identity,
+    session_factory: async_sessionmaker[AsyncSession],
+    services: dict[str, int],
+) -> None:
+    formula = '=HYPERLINK("https://example.com","open")'
+    await insert_record(session_factory, services["auth"], None, title=formula)
+
+    assert await export_titles(client, viewer) == {formula: "s"}
+
+
+async def test_a_stored_control_character_is_dropped_instead_of_failing_the_export(
+    client: AsyncClient,
+    viewer: Identity,
+    session_factory: async_sessionmaker[AsyncSession],
+    services: dict[str, int],
+) -> None:
+    # A row written before titles were validated, or by a path that skips the schema.
+    await insert_record(session_factory, services["auth"], None, title="tab\x0bbed")
+
+    assert await export_titles(client, viewer) == {"tabbed": "s"}
+
+
 @pytest.mark.usefixtures("dataset")
 async def test_export_over_the_row_limit_is_rejected(
     client: AsyncClient, viewer: Identity, monkeypatch: pytest.MonkeyPatch
