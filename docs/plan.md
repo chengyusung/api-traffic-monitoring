@@ -36,7 +36,7 @@ P0 沒完成之前不碰 P1。P1 砍得掉，P0 砍不掉。
 | M03 Realtime | Buffer、Writer、Generator、WebSocket 與 Live Monitor 完成；停 DB 30 秒後 drain 且 `event_id` 無重複；審查後修正 16 項 | 6fd52c2 |
 | M04 Data | CSV / JSON 匯入（All-or-Nothing）、四個 analytics endpoint、Excel、Records 與 Analytics 頁完成 | 2e351e7 |
 | M05 Admin + Tests | `/admin/*` 與 Admin 頁完成；後端 339 個測試、前端 11 個測試通過 | 2798239 |
-| M06 Delivery | 已合併。README 狀態表、`docs/testing.md` 驗收證據、review log、`.env.example`、專案簡報與開發經過文件完成；之後再做一次誠實性修正。乾淨 clone 的完整流程與 Docker Engine 都沒有驗證過，CI-01 在 push 後才會跑 | 4f1ebb5、9b350e2、babd5e4、9154d72、405af99、6b3e1e7（docs commits） |
+| M06 Delivery | 已合併。README 狀態表、`docs/testing.md` 驗收證據、review log、`.env.example`、專案簡報與開發經過文件完成。乾淨 clone 的完整流程與 Docker Engine 都沒有驗證過，CI-01 在 push 後才會跑 | 4f1ebb5、9b350e2、babd5e4、9154d72、405af99、6b3e1e7（docs commits） |
 
 ## M03 實作順序
 
