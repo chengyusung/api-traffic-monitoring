@@ -135,7 +135,7 @@ Generator 每秒各產生一筆，負值截為 0，random seed 由 `SIMULATOR_SE
 | `import_batches` | id, filename, uploaded_by, status, total_count, success_count, failure_count, errors, created_at | status ∈ {SUCCEEDED, FAILED}；All-or-Nothing，所以 success_count 為 0 或 total_count |
 | `system_logs` | id, level, event_type, actor_id, target_type, target_id, message, context, request_id, created_at | 業務稽核事件；不存憑證、token、完整 payload |
 
-索引：`unique(event_id)`、`unique(email)`、`unique(slug)`、`(service_id, observed_at)`、`(source, observed_at)`、`(created_by)`。PK 為 BIGINT auto-increment。
+索引：`unique(event_id)`、`unique(email)`、`unique(slug)`；`traffic_records` 的 `(service_id, observed_at)`、`(source, observed_at)`、`(created_by)`、`(observed_at)`；`system_logs` 的 `(created_at, id)`、`(event_type, created_at)`；`users` 的 `(role, is_active)`。後四個由 migration `0002` 加入，分別服務沒有 Service / Source 條件的時間區間查詢、`/admin/logs` 的排序與 event type 篩選，以及 Admin 規則鎖定有效 ADMIN 列。PK 為 BIGINT auto-increment。
 
 ### 5.2 欄位來源與語意
 

@@ -75,6 +75,8 @@ class AuditEvent(StrEnum):
 
 class User(Base):
     __tablename__ = "users"
+    # The admin rules lock the active ADMIN rows; without it FOR UPDATE scans every user.
+    __table_args__ = (Index("ix_users_role_is_active", "role", "is_active"),)
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     email: Mapped[str] = mapped_column(String(255), unique=True)
@@ -130,6 +132,8 @@ class TrafficRecord(Base):
         Index("ix_traffic_records_service_id_observed_at", "service_id", "observed_at"),
         Index("ix_traffic_records_source_observed_at", "source", "observed_at"),
         Index("ix_traffic_records_created_by", "created_by"),
+        # A time window without a service or source filter: analytics, export, the default list.
+        Index("ix_traffic_records_observed_at", "observed_at"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
@@ -148,6 +152,11 @@ class TrafficRecord(Base):
 
 class SystemLog(Base):
     __tablename__ = "system_logs"
+    # GET /admin/logs: newest first, optionally narrowed to one event type.
+    __table_args__ = (
+        Index("ix_system_logs_created_at_id", "created_at", "id"),
+        Index("ix_system_logs_event_type_created_at", "event_type", "created_at"),
+    )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     level: Mapped[str] = mapped_column(String(16))
