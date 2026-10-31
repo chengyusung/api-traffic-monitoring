@@ -19,6 +19,8 @@ def make_engine(url: str) -> AsyncEngine:
         max_overflow=settings.db_max_overflow,
         pool_pre_ping=True,
         pool_recycle=settings.db_pool_recycle_seconds,
+        # Bound values (emails, password hashes) stay out of exception text and logs.
+        hide_parameters=True,
         # Runs on every new physical connection, not once at startup.
         connect_args={"init_command": "SET time_zone='+00:00'"},
     )
