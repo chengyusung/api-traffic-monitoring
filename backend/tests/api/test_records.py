@@ -7,6 +7,7 @@ from httpx import AsyncClient
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.api.records import BULK_MAX_ITEMS
 from app.models import ApiService, RecordSource, SystemLog, TrafficRecord
 from tests.conftest import Identity
 
@@ -470,6 +471,23 @@ async def test_bulk_conflicting_with_an_existing_event_id_writes_nothing(
 
     assert response.status_code == 409
     assert await record_count(session_factory) == 1
+
+
+async def test_bulk_accepts_up_to_the_limit_and_rejects_one_more(
+    client: AsyncClient,
+    services: dict[str, int],
+    user_a: Identity,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    bulk = f"{RECORDS}/bulk"
+
+    over = await client.post(
+        bulk, json=[new_record()] * (BULK_MAX_ITEMS + 1), headers=user_a.headers
+    )
+    at_limit = await client.post(bulk, json=[new_record()] * BULK_MAX_ITEMS, headers=user_a.headers)
+
+    assert (over.status_code, at_limit.status_code) == (422, 201)
+    assert await record_count(session_factory) == BULK_MAX_ITEMS
 
 
 async def test_bulk_rejects_an_empty_list(

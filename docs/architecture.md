@@ -177,6 +177,8 @@ CSV 欄位：`event_id,service_slug,title,value,observed_at`；JSON 為同欄位
 {"items": [], "page": 1, "page_size": 20, "total": 0}
 ```
 
+**Bulk**：`POST /records/bulk` 最多 1,000 筆，超過回 422。
+
 **錯誤格式**：
 
 ```json
