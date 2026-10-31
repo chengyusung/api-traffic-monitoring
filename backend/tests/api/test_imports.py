@@ -7,6 +7,8 @@ from httpx import AsyncClient
 
 from app.api.imports import MULTIPART_OVERHEAD_BYTES
 from app.core.config import settings
+from app.ingestion.buffer import IngestionEvent
+from app.pipeline import Pipeline
 from tests.conftest import Identity
 
 IMPORTS = "/api/v1/imports"
@@ -138,3 +140,34 @@ async def test_an_upload_without_a_file_or_a_token_is_refused(
     no_token = await client.post(IMPORTS, files={"file": ("x.csv", b"")})
 
     assert (no_file.status_code, no_token.status_code) == (422, 401)
+
+
+async def test_an_import_neither_enters_the_buffer_nor_reaches_websocket_clients(
+    client: AsyncClient,
+    identities: dict[str, Identity],
+    pipeline: Pipeline,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    accepted: list[IngestionEvent] = []
+    sent: list[str] = []
+    accept, broadcast = pipeline.buffer.accept, pipeline.manager.broadcast
+
+    async def spy_accept(event: IngestionEvent) -> None:
+        accepted.append(event)
+        await accept(event)
+
+    def spy_broadcast(message: str) -> None:
+        sent.append(message)
+        broadcast(message)
+
+    monkeypatch.setattr(pipeline.buffer, "accept", spy_accept)
+    monkeypatch.setattr(pipeline.manager, "broadcast", spy_broadcast)
+    before = pipeline.buffer.total_uncommitted
+    content = (DATA / "sample_traffic.json").read_bytes()
+
+    created = await upload(client, identities["user_a"], "sample_traffic.json", content)
+
+    assert created["status"] == 201
+    assert (pipeline.buffer.total_uncommitted, accepted) == (before, [])
+    # The status loop may announce the pipeline's own state; nothing else goes out.
+    assert {json.loads(message)["type"] for message in sent} <= {"status"}

@@ -196,3 +196,21 @@ async def test_rows_batch_and_audit_row_commit_together_or_not_at_all(
             .where(TrafficRecord.import_batch_id.is_(None))
         )
     assert (await counts(session_factory), unlinked) == ((0, []), 0)
+
+
+async def test_a_rejected_file_stores_and_returns_at_most_100_row_errors(
+    session_factory: async_sessionmaker[AsyncSession], uploader: User
+) -> None:
+    bad_rows = 150
+    content = "\n".join([SAMPLE_LINES[0], *[",auth,t,-1,2026-10-31T08:00:00Z"] * bad_rows])
+
+    with pytest.raises(UnprocessableError) as raised:
+        await run_import(session_factory, uploader, content.encode())
+
+    _, [batch] = await counts(session_factory)
+    assert (batch.failure_count, len(batch.errors or []), len(raised.value.details or [])) == (
+        bad_rows,
+        imports.REPORTED_ERRORS,
+        imports.REPORTED_ERRORS,
+    )
+    assert f"and {bad_rows - 5} more" in raised.value.message
