@@ -95,3 +95,36 @@ async def test_a_send_that_never_returns_times_out_and_frees_the_slot() -> None:
         client.leave()
         await serving  # returns once the stuck close has hit its own timeout
     assert fanout.active_connections == 0
+
+
+async def test_an_idle_socket_is_closed_with_4401_once_its_token_expires() -> None:
+    fanout = manager(now=lambda: EXPIRES_AT - timedelta(milliseconds=50))
+    client = Client()
+    serving = asyncio.create_task(fanout.serve(await accepted(client), EXPIRES_AT, "status"))
+
+    async with asyncio.timeout(5):  # nothing is broadcast: only the expiry can close it
+        await client.wait_for(lambda sent: any(m["type"] == "websocket.close" for m in sent))
+        client.leave()
+        await serving
+
+    assert client.closed_with() == 4401
+    assert [m["text"] for m in client.sent if m["type"] == "websocket.send"] == ["status"]
+    assert fanout.active_connections == 0
+
+
+async def test_a_message_after_expiry_is_not_sent_and_closes_with_4401() -> None:
+    now = [EXPIRES_AT - timedelta(hours=1)]
+    fanout = manager(now=lambda: now[0])
+    client = Client()
+    serving = asyncio.create_task(fanout.serve(await accepted(client), EXPIRES_AT, "status"))
+
+    async with asyncio.timeout(5):
+        await client.wait_for(lambda sent: any(m.get("text") == "status" for m in sent))
+        now[0] = EXPIRES_AT
+        fanout.broadcast("event")
+        await client.wait_for(lambda sent: any(m["type"] == "websocket.close" for m in sent))
+        client.leave()
+        await serving
+
+    assert client.closed_with() == 4401
+    assert not any(m.get("text") == "event" for m in client.sent)

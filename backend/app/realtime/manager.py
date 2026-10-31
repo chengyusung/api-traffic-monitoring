@@ -81,7 +81,12 @@ class ConnectionManager:
         code: CloseCode | None
         try:
             while True:
-                message = await connection.queue.get()
+                token_left_s = (connection.expires_at - self._now()).total_seconds()
+                try:
+                    message = await asyncio.wait_for(connection.queue.get(), max(0, token_left_s))
+                except TimeoutError:
+                    code = CloseCode.UNAUTHORIZED  # expired while the socket was idle
+                    break
                 if self._now() >= connection.expires_at:
                     code = CloseCode.UNAUTHORIZED
                     break
