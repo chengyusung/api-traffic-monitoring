@@ -2,7 +2,7 @@ from collections.abc import Sequence
 from typing import Any, Literal
 
 from sqlalchemy import Label, RowMapping, case, cast, func, select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncResult, AsyncSession
 
 from app.models import ApiService, TrafficRecord
 from app.models.types import UTCDateTime
@@ -59,3 +59,30 @@ async def trend(
         .limit(limit)
     )
     return result.mappings().all()
+
+
+async def stream_export(
+    session: AsyncSession, filters: RecordFilters, limit: int
+) -> AsyncResult[tuple[Any, ...]]:
+    """Detail rows in the records list's default order, fetched from the server in chunks."""
+    return await session.stream(
+        select(
+            TrafficRecord.id,
+            TrafficRecord.event_id,
+            ApiService.slug,
+            TrafficRecord.title,
+            TrafficRecord.value,
+            TrafficRecord.source,
+            TrafficRecord.created_by,
+            TrafficRecord.observed_at,
+            TrafficRecord.persisted_at,
+            TrafficRecord.threshold_applied,
+            TrafficRecord.is_anomaly,
+            TrafficRecord.import_batch_id,
+        )
+        .join(ApiService, TrafficRecord.service_id == ApiService.id)
+        .where(*filter_conditions(filters))
+        .order_by(TrafficRecord.observed_at.desc(), TrafficRecord.id.desc())
+        .limit(limit)
+        .execution_options(yield_per=1000)
+    )

@@ -29,11 +29,16 @@ def filter_conditions(filters: RecordFilters) -> list[ColumnElement[bool]]:
     return conditions
 
 
+async def count(session: AsyncSession, filters: RecordFilters) -> int:
+    query = select(func.count()).select_from(TrafficRecord).where(*filter_conditions(filters))
+    return await session.scalar(query) or 0
+
+
 async def list_page(
     session: AsyncSession, query: RecordListQuery
 ) -> tuple[Sequence[TrafficRecord], int]:
     conditions = filter_conditions(query)
-    total = await session.scalar(select(func.count()).select_from(TrafficRecord).where(*conditions))
+    total = await count(session, query)
     column = getattr(TrafficRecord, query.sort.removeprefix("-"))
     descending = query.sort.startswith("-")
     # id breaks ties so equal sort values page deterministically.
@@ -49,7 +54,7 @@ async def list_page(
         .offset((query.page - 1) * query.page_size)
         .limit(query.page_size)
     )
-    return rows.all(), total or 0
+    return rows.all(), total
 
 
 async def existing_event_ids(session: AsyncSession, event_ids: Collection[str]) -> set[str]:
