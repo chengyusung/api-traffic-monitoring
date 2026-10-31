@@ -73,7 +73,9 @@ def _error_response(
 
 
 async def _app_error(request: Request, exc: AppError) -> JSONResponse:
-    return _error_response(request, exc.status_code, exc.code, exc.message)
+    # RFC 6750 §3: a 401 names the scheme the client should retry with.
+    headers = {"WWW-Authenticate": "Bearer"} if exc.status_code == HTTPStatus.UNAUTHORIZED else None
+    return _error_response(request, exc.status_code, exc.code, exc.message, headers)
 
 
 async def _http_error(request: Request, exc: HTTPException) -> JSONResponse:

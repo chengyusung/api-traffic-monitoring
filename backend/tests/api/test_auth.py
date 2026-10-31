@@ -25,6 +25,8 @@ def error(response: Response, status: int, code: str) -> dict[str, str]:
     body = response.json()["error"]
     assert body["code"] == code
     assert body["request_id"] == response.headers["X-Request-ID"]
+    if status == 401:
+        assert response.headers.get("WWW-Authenticate") == "Bearer"
     return body
 
 
