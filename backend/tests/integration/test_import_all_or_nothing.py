@@ -8,7 +8,17 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.errors import ConflictError, UnprocessableError
 from app.core.security import hash_password
-from app.models import ImportBatch, ImportStatus, RecordSource, Role, SystemLog, TrafficRecord, User
+from app.models import (
+    ApiService,
+    ImportBatch,
+    ImportStatus,
+    RecordSource,
+    Role,
+    SystemLog,
+    TrafficRecord,
+    User,
+)
+from app.services import imports
 from app.services.imports import import_file
 
 SAMPLE = Path(__file__).resolve().parents[3] / "data" / "sample_traffic.csv"
@@ -114,3 +124,28 @@ async def test_an_event_id_already_in_the_database_rejects_the_whole_file(
     async with session_factory() as session:
         audit = (await session.scalars(select(SystemLog.event_type).order_by(SystemLog.id))).all()
     assert audit == ["import.succeeded", "import.failed"]
+
+
+async def test_a_service_deactivated_mid_import_records_a_failed_batch(
+    session_factory: async_sessionmaker[AsyncSession],
+    uploader: User,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async with session_factory() as session:
+        auth = await session.scalar(select(ApiService).where(ApiService.slug == "auth"))
+        assert auth is not None
+        auth.is_active = False
+        await session.commit()
+    real_parse = imports.parse
+    # parse() saw the service active: the deactivation committed between the two reads.
+    monkeypatch.setattr(
+        imports, "parse", lambda name, content, slugs: real_parse(name, content, {*slugs, "auth"})
+    )
+
+    with pytest.raises(UnprocessableError, match="auth"):
+        await run_import(session_factory, uploader, "\n".join(SAMPLE_LINES[:2]).encode())
+
+    records, batches = await counts(session_factory)
+    assert records == 0
+    assert [(b.status, b.success_count) for b in batches] == [(ImportStatus.FAILED, 0)]
+    assert [e["field"] for e in batches[0].errors or []] == ["service_slug"]

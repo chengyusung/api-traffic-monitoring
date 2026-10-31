@@ -25,7 +25,11 @@ from app.services import audit, records
 COLUMNS = ["event_id", "service_slug", "title", "value", "observed_at"]
 # Bounds what a rejected 10,000-row file stores and returns; failure_count still counts every row.
 REPORTED_ERRORS = 100
-_INTEGER = re.compile(r"-?[0-9]+")
+# A valid value has at most 10 digits; longer text stays a string and fails validation, since
+# int() of more than 4,300 digits raises.
+_INTEGER = re.compile(r"-?[0-9]{1,12}")
+# Pydantic names an unknown key by the key itself; the client chose its length.
+FIELD_MAX_CHARS = 64
 
 # A raw row is a dict of fields, or a message when the row has no usable shape.
 RawRows = list[tuple[int, dict[str, Any] | str]]
@@ -75,6 +79,8 @@ def _json_rows(text: str, max_rows: int) -> RawRows:
         data = json.loads(text)
     except json.JSONDecodeError as exc:
         raise _Rejected(None, f"invalid JSON at line {exc.lineno} column {exc.colno}") from exc
+    except RecursionError as exc:
+        raise _Rejected(None, "JSON is nested too deeply") from exc
     if not isinstance(data, list):
         raise _Rejected(None, "JSON must be an array of objects")
     if len(data) > max_rows:
@@ -98,7 +104,18 @@ def _read(filename: str, content: bytes, max_rows: int, max_bytes: int) -> RawRo
         text = content.decode("utf-8-sig")
     except UnicodeDecodeError as exc:
         raise _Rejected(None, "file is not UTF-8 text") from exc
-    return reader(text, max_rows)
+    rows = reader(text, max_rows)
+    if not rows:
+        raise _Rejected(None, "file has no data rows")
+    return rows
+
+
+def _event_id(raw: dict[str, Any]) -> uuid.UUID | None:
+    value = raw.get("event_id")
+    try:
+        return uuid.UUID(value) if isinstance(value, str) else None
+    except ValueError:
+        return None
 
 
 def _validate(
@@ -111,21 +128,27 @@ def _validate(
         return [RowError(row=row, field=None, message=raw)]
     if raw.get("event_id") == "":
         raw = {**raw, "event_id": None}
+    errors: list[RowError] = []
+    # Registered before the rest of the row validates, so a bad first copy still names the second.
+    event_id = _event_id(raw)
+    if event_id is not None and (first := seen.setdefault(event_id, row)) != row:
+        errors.append(RowError(row=row, field="event_id", message=f"duplicates row {first}"))
     try:
         item = RecordCreate.model_validate(raw)
     except ValidationError as exc:
         # The reason only, never the `input` that pydantic also reports.
         return [
-            RowError(row=row, field=".".join(map(str, e["loc"])) or None, message=e["msg"])
+            RowError(
+                row=row,
+                field=".".join(map(str, e["loc"]))[:FIELD_MAX_CHARS] or None,
+                message=e["msg"],
+            )
             for e in exc.errors()
-        ]
-    errors: list[RowError] = []
+        ] + errors
     if item.service_slug not in active_slugs:
         errors.append(
             RowError(row=row, field="service_slug", message="unknown or inactive service")
         )
-    if item.event_id is not None and (first := seen.setdefault(item.event_id, row)) != row:
-        errors.append(RowError(row=row, field="event_id", message=f"duplicates row {first}"))
     return errors or item
 
 
@@ -194,6 +217,10 @@ async def import_file(
                     row=None, field="event_id", message="an event_id was inserted concurrently"
                 )
             ]
+        except UnprocessableError as exc:
+            # A service deactivated after parse() saw it active.
+            errors = [RowError(row=None, field="service_slug", message=exc.message)]
+            error_type = UnprocessableError
     if not created:
         await session.rollback()
 

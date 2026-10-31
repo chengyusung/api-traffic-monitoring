@@ -83,6 +83,20 @@ def test_a_duplicate_event_id_inside_the_file_names_both_rows() -> None:
     assert "row 2" in error["message"]
 
 
+def test_a_duplicate_event_id_is_named_even_when_its_first_row_is_invalid() -> None:
+    first = f"{EVENT_ID},payment,checkout,-1,2026-10-31T08:00:00Z"
+    second = f"{EVENT_ID.upper()},payment,checkout,50,2026-10-31T08:00:00Z"
+
+    assert rejected(csv_file(first, second)) == {(2, "value"), (3, "event_id")}
+
+
+def test_an_unknown_key_is_named_in_at_most_64_characters() -> None:
+    parsed = parse("upload.json", json_file(json_row(**{"k" * 300: 1})), SLUGS)
+
+    [error] = parsed.errors
+    assert error["field"] == "k" * 64
+
+
 def test_an_unknown_or_inactive_service_is_a_row_error() -> None:
     parsed = parse("upload.csv", csv_file(GOOD.replace("payment", "orders")), {"payment"})
 
@@ -93,7 +107,7 @@ def test_a_naive_observed_at_is_rejected() -> None:
     assert rejected(csv_file(",payment,checkout,50,2026-10-31T08:00:00")) == {(2, "observed_at")}
 
 
-@pytest.mark.parametrize("value", ["-1", "5.0", "", "1e3", "2147483648"])
+@pytest.mark.parametrize("value", ["-1", "5.0", "", "1e3", "2147483648", "9" * 5000])
 def test_value_must_be_a_non_negative_integer(value: str) -> None:
     content = csv_file(f",payment,checkout,{value},2026-10-31T08:00:00Z")
 
@@ -156,6 +170,20 @@ def test_an_empty_json_event_id_is_left_for_the_server(event_id: str | None) -> 
         ("upload.json", b"[{"),
         ("upload.txt", csv_file(GOOD)),
         ("upload.csv", "\n".join([",".join(COLUMNS), GOOD]).encode("utf-16")),
+        ("upload.json", b"[" * 200_000),
+        ("upload.csv", csv_file()),
+        ("upload.csv", csv_file("", "")),
+        ("upload.json", b"[]"),
+    ],
+    ids=[
+        "json object",
+        "truncated json",
+        "txt",
+        "utf-16",
+        "deep json",
+        "header only",
+        "blank rows",
+        "empty array",
     ],
 )
 def test_an_unreadable_file_is_one_file_level_error(filename: str, content: bytes) -> None:
