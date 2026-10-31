@@ -38,6 +38,7 @@ async def insert_record(
     value: int = 50,
     title: str = "seeded",
     observed_at: datetime = T0,
+    persisted_at: datetime | None = None,
     source: RecordSource = RecordSource.MANUAL,
 ) -> int:
     """A row as the simulator or another writer would leave it (created_by may be NULL)."""
@@ -50,7 +51,7 @@ async def insert_record(
             source=source,
             created_by=created_by,
             observed_at=observed_at,
-            persisted_at=datetime.now(UTC),
+            persisted_at=persisted_at or datetime.now(UTC),
             threshold_applied=80,
             is_anomaly=value > 80,
         )
@@ -580,6 +581,22 @@ async def test_sort_by_value_descending(
         by_value[5],
     ]
     assert await list_ids(client, viewer, sort="value") == [by_value[5], by_value[40], by_value[90]]
+
+
+async def test_sort_by_persisted_at_follows_that_column(
+    client: AsyncClient,
+    services: dict[str, int],
+    viewer: Identity,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    # Inserted first but persisted later, so id order and persisted_at order disagree.
+    late = await insert_record(session_factory, services["auth"], None, persisted_at=T0)
+    early = await insert_record(
+        session_factory, services["auth"], None, persisted_at=T0 - timedelta(hours=1)
+    )
+
+    assert await list_ids(client, viewer, sort="persisted_at") == [early, late]
+    assert await list_ids(client, viewer, sort="-persisted_at") == [late, early]
 
 
 @pytest.mark.parametrize(
