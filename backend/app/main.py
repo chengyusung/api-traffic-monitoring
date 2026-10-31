@@ -25,6 +25,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 def create_app() -> FastAPI:
     setup_logging(settings.log_level)
     app = FastAPI(title="API Traffic Monitoring", version="0.1.0", lifespan=lifespan)
+    # Added first, so it runs inside RequestContextMiddleware and has the request id.
+    app.add_middleware(imports.UploadLimitMiddleware, path=f"/api/v1{imports.router.prefix}")
     app.add_middleware(RequestContextMiddleware)
     register_error_handlers(app)
     app.include_router(health.router)

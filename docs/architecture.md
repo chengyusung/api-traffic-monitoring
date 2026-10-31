@@ -203,10 +203,11 @@ CSV 欄位：`event_id,service_slug,title,value,observed_at`；JSON 為同欄位
 | 403 | `FORBIDDEN` |
 | 404 | `NOT_FOUND`（不存在與無權查看皆回 404，不洩漏存在性） |
 | 409 | `CONFLICT`（email / event_id 重複） |
+| 413 | `PAYLOAD_TOO_LARGE`（`POST /imports` 的 `Content-Length` 超過 `IMPORT_MAX_BYTES` 加 64 KiB） |
 | 422 | `VALIDATION_ERROR`（含欄位路徑；匯入含行號） |
 | 503 | `SERVICE_UNAVAILABLE`（DB 連線類錯誤，見下） |
 
-匯入被拒時 `error` 另有 `details`（逐列錯誤，見 §5.3）；其他錯誤沒有這個欄位。
+匯入被拒時 `error` 另有 `details`（逐列錯誤，見 §5.3）；其他錯誤沒有這個欄位。413 由一個 ASGI middleware 在 Starlette 讀取 multipart body 之前、也在認證之前回覆，所以沒有 token 的超大上傳也是 413；chunked 上傳沒有 `Content-Length`，會被完整讀取後由 §5.3 的大小檢查回 422。
 
 DB 錯誤依 MariaDB errno 分類，REST 與 Writer 共用 `app/core/errors.py` 的 `database_unavailable()`。連線中斷或被拒、太多連線（含 `max_user_connections` 1203）、server 關閉中、封包讀寫錯誤或逾時（1158–1161）、server 唯讀（1290，例如 failover 期間）、查詢被中斷（1317）、`max_statement_time` 逾時（1969）、lock wait timeout、deadlock、snapshot 衝突（1020）、連線被中斷或閒置斷線、invalidated connection、pool timeout 回 503，WARNING log 帶 `errno`。其他 DB 錯誤（例如 CHECK 4025、unknown column 1054、FK 1452）是程式錯誤，回 500 `INTERNAL_SERVER_ERROR`。asyncmy 把沒有對應類別的 errno 都包成 `OperationalError`，所以不能只看 exception 類別。1020 是 MariaDB 11.7 預設 `innodb_snapshot_isolation=ON` 的結果：一個 request 先讀了某列，另一個 commit 改了它，這個 request 再寫同一列就會被中止；重送可以成功，所以和 deadlock 一樣回 503。
 

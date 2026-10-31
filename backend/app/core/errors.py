@@ -102,7 +102,7 @@ class ServiceUnavailableError(AppError):
     code = "SERVICE_UNAVAILABLE"
 
 
-def _error_response(
+def error_response(
     request: Request,
     status_code: int,
     code: str,
@@ -124,13 +124,13 @@ def _error_response(
 async def _app_error(request: Request, exc: AppError) -> JSONResponse:
     # RFC 6750 §3: a 401 names the scheme the client should retry with.
     headers = {"WWW-Authenticate": "Bearer"} if exc.status_code == HTTPStatus.UNAUTHORIZED else None
-    return _error_response(request, exc.status_code, exc.code, exc.message, headers, exc.details)
+    return error_response(request, exc.status_code, exc.code, exc.message, headers, exc.details)
 
 
 async def _http_error(request: Request, exc: HTTPException) -> JSONResponse:
     status = HTTPStatus(exc.status_code)
     message = exc.detail if isinstance(exc.detail, str) else status.phrase
-    return _error_response(request, status, status.name, message, exc.headers)
+    return error_response(request, status, status.name, message, exc.headers)
 
 
 async def _validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:
@@ -138,14 +138,14 @@ async def _validation_error(request: Request, exc: RequestValidationError) -> JS
     message = "; ".join(
         f"{'.'.join(str(part) for part in error['loc'])}: {error['msg']}" for error in exc.errors()
     )
-    return _error_response(request, HTTPStatus.UNPROCESSABLE_ENTITY, "VALIDATION_ERROR", message)
+    return error_response(request, HTTPStatus.UNPROCESSABLE_ENTITY, "VALIDATION_ERROR", message)
 
 
 async def _unhandled_error(request: Request, exc: Exception) -> JSONResponse:
     logger.exception(
         "unhandled exception", extra={"request_id": getattr(request.state, "request_id", None)}
     )
-    return _error_response(
+    return error_response(
         request, HTTPStatus.INTERNAL_SERVER_ERROR, "INTERNAL_SERVER_ERROR", "Internal server error."
     )
 

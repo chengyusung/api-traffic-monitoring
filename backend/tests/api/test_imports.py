@@ -2,8 +2,11 @@ import json
 from pathlib import Path
 from typing import Any
 
+import pytest
 from httpx import AsyncClient
 
+from app.api.imports import MULTIPART_OVERHEAD_BYTES
+from app.core.config import settings
 from tests.conftest import Identity
 
 IMPORTS = "/api/v1/imports"
@@ -110,6 +113,22 @@ async def test_imported_rows_belong_to_the_uploader(
     )
 
     assert (by_other.status_code, by_owner.status_code) == (404, 204)
+
+
+async def test_an_upload_declared_over_the_limit_is_413_before_it_is_read(
+    client: AsyncClient, identities: dict[str, Identity], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(settings, "import_max_bytes", 10)
+    content = b"x" * MULTIPART_OVERHEAD_BYTES
+
+    response = await upload(client, identities["user_a"], "big.csv", content)
+
+    assert response["status"] == 413
+    error = response["body"]["error"]
+    assert (error["code"], error["request_id"]) == (
+        "PAYLOAD_TOO_LARGE",
+        response["headers"]["X-Request-ID"],
+    )
 
 
 async def test_an_upload_without_a_file_or_a_token_is_refused(
