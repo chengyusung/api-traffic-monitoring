@@ -105,10 +105,11 @@ class Pipeline:
                 await asyncio.wait([task])
         self.writer.close()
         if writer := self._tasks.get("writer"):
-            try:
-                await asyncio.wait_for(writer, settings.shutdown_flush_timeout_seconds)
-            except TimeoutError:
-                pass
+            # asyncio.wait never re-raises the writer's exception (_log_crash logs it), so the
+            # sockets and the engine are still closed after a crash.
+            await asyncio.wait([writer], timeout=settings.shutdown_flush_timeout_seconds)
+            writer.cancel()
+            await asyncio.wait([writer])
         abandoned = self.buffer.total_uncommitted
         level = logging.WARNING if abandoned else logging.INFO
         logger.log(level, "ingestion stopped", extra={"abandoned_events": abandoned})

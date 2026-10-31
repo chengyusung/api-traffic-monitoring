@@ -9,7 +9,7 @@ from datetime import datetime
 from typing import Any
 
 from sqlalchemy import select
-from sqlalchemy.exc import DBAPIError, IntegrityError, SQLAlchemyError
+from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -67,6 +67,16 @@ def to_record(event: IngestionEvent, persisted_at: datetime) -> TrafficRecord:
         threshold_applied=event.threshold_applied,
         is_anomaly=event.is_anomaly,
     )
+
+
+async def wait_first(*futures: asyncio.Future[Any]) -> None:
+    """Return once one future is done; cancel the others and wait for them to finish."""
+    try:
+        await asyncio.wait(futures, return_when=asyncio.FIRST_COMPLETED)
+    finally:
+        for future in futures:
+            future.cancel()
+        await asyncio.gather(*futures, return_exceptions=True)
 
 
 def records(events: list[IngestionEvent]) -> list[TrafficRecord]:
@@ -144,7 +154,10 @@ class BatchWriter:
         )
 
     def close(self) -> None:
-        """Flush what is queued without waiting for the interval, then let run() return."""
+        """Flush what is queued without waiting for the interval, then let run() return.
+
+        A batch in back-off gets one immediate attempt; after close() no batch is retried.
+        """
         self._closing.set()
 
     async def run(self) -> None:
@@ -180,20 +193,19 @@ class BatchWriter:
         waits = [take, asyncio.ensure_future(self._closing.wait())]
         if deadline is not None:
             waits.append(asyncio.ensure_future(self._sleep(max(0.0, deadline - self._clock()))))
-        try:
-            await asyncio.wait(waits, return_when=asyncio.FIRST_COMPLETED)
-        finally:
-            for waiter in waits:
-                waiter.cancel()
-            # A cancelled Queue.get() leaves its item in the queue, so nothing is lost here.
-            await asyncio.gather(*waits, return_exceptions=True)
-        return take.result() if not take.cancelled() else None
+        await wait_first(*waits)
+        if not take.cancelled():
+            return take.result()
+        # A cancelled Queue.get() leaves its item queued; one put during the cancel would
+        # otherwise stay there, reserved, after run() returns.
+        return self._buffer.take_nowait()
 
     async def _persist(self, batch: list[IngestionEvent]) -> bool:
         """Commit the batch, retrying transient failures. False after a permanent failure."""
         self._held = batch
         while True:
             self.state = WriterState.IN_FLIGHT
+            last_attempt = self._closing.is_set()
             try:
                 # A hung database becomes a transient TimeoutError, retried on a fresh session.
                 async with asyncio.timeout(self._commit_timeout_s):
@@ -217,6 +229,15 @@ class BatchWriter:
                 delay = self._backoff(self.failed_attempts)
                 self.failed_attempts += 1
                 self.retry_count += 1
+                if last_attempt:
+                    logger.warning(
+                        "batch abandoned at shutdown after its last attempt",
+                        extra={
+                            "error": type(exc).__name__,
+                            "abandoned_events": self._buffer.total_uncommitted,
+                        },
+                    )
+                    return False
                 self.state = WriterState.RETRY_WAIT
                 logger.warning(
                     "batch commit failed; retrying",
@@ -227,7 +248,10 @@ class BatchWriter:
                         "retry_in_s": round(delay, 3),
                     },
                 )
-                await self._sleep(delay)
+                await wait_first(
+                    asyncio.ensure_future(self._sleep(delay)),
+                    asyncio.ensure_future(self._closing.wait()),
+                )
         self._buffer.release(len(batch))
         self._held = []
         self.last_commit_at = utcnow()
@@ -272,7 +296,7 @@ class BatchWriter:
                     session, event_type, message, level=level, target_type="writer", context=context
                 )
                 await session.commit()
-        except SQLAlchemyError as exc:
+        except Exception as exc:
             logger.warning(
                 "writer audit row not written",
                 extra={"event_type": event_type, "error": type(exc).__name__},

@@ -1,7 +1,7 @@
 import asyncio
 import random
 import uuid
-from collections.abc import AsyncIterator, Callable, Iterable
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterable
 from contextlib import asynccontextmanager, suppress
 from datetime import UTC, datetime
 
@@ -48,9 +48,16 @@ class FakeSessions:
     With hold=True every commit waits for one `permits.release()` from the test.
     """
 
-    def __init__(self, failures: Iterable[Exception] = (), *, hold: bool = False) -> None:
+    def __init__(
+        self,
+        failures: Iterable[Exception] = (),
+        *,
+        hold: bool = False,
+        audit_failure: Exception | None = None,
+    ) -> None:
         self.failures = list(failures)
         self.hold = hold
+        self.audit_failure = audit_failure
         self.permits = asyncio.Semaphore(0)
         self.opened = 0
         self.attempts: list[list[TrafficRecord]] = []
@@ -105,6 +112,8 @@ class FakeSession:
     async def commit(self) -> None:
         sessions = self.sessions
         if self.logs:
+            if sessions.audit_failure is not None:
+                raise sessions.audit_failure
             sessions.audit.extend(self.logs)
             await sessions.notify()
             return
@@ -151,7 +160,11 @@ def db_down() -> OperationalError:
 
 
 def make_writer(
-    buffer: IngestionBuffer, sessions: FakeSessions, clock: FakeClock, batch_max_size: int = 100
+    buffer: IngestionBuffer,
+    sessions: FakeSessions,
+    clock: FakeClock,
+    batch_max_size: int = 100,
+    sleep: Callable[[float], Awaitable[None]] | None = None,
 ) -> BatchWriter:
     return BatchWriter(
         buffer,
@@ -162,7 +175,7 @@ def make_writer(
         retry_max_s=30,
         commit_timeout_s=COMMIT_TIMEOUT_S,
         clock=clock,
-        sleep=clock.sleep,
+        sleep=sleep or clock.sleep,
         rng=CeilingJitter(),
     )
 
@@ -428,3 +441,77 @@ async def test_more_uncommitted_events_than_capacity_fail_loudly() -> None:
 
     with pytest.raises(AssertionError, match="more uncommitted events than capacity"):
         await buffer.accept(event(3))
+
+
+class BlockingSleep:
+    """A back-off that only ends when the writer cancels it."""
+
+    def __init__(self) -> None:
+        self.calls: list[float] = []
+
+    async def __call__(self, seconds: float) -> None:
+        self.calls.append(seconds)
+        await asyncio.Event().wait()
+
+
+@pytest.mark.parametrize("final_attempt_fails", [True, False])
+async def test_close_during_a_back_off_makes_exactly_one_more_attempt(
+    final_attempt_fails: bool,
+) -> None:
+    clock = FakeClock()
+    sessions = FakeSessions([db_down(), db_down()] if final_attempt_fails else [db_down()])
+    buffer = IngestionBuffer(capacity=10, clock=clock)
+    await buffer.accept(event(1))
+    sleep = BlockingSleep()
+    writer = make_writer(buffer, sessions, clock, batch_max_size=1, sleep=sleep)
+    run = asyncio.create_task(writer.run())
+    await sessions.wait_for(lambda: len(sessions.attempts) == 1)
+    await let_tasks_run()
+    assert writer.state is WriterState.RETRY_WAIT and len(sleep.calls) == 1
+
+    writer.close()
+    async with asyncio.timeout(5):
+        await run
+
+    assert len(sessions.attempts) == 2, "close() should cut the back-off short, then stop"
+    assert len(sessions.committed) == (0 if final_attempt_fails else 1)
+    assert buffer.total_uncommitted == (1 if final_attempt_fails else 0)
+    assert writer.state is WriterState.STOPPED
+
+
+@pytest.mark.parametrize("yields_before_accept", range(6))
+async def test_an_event_accepted_while_the_writer_closes_is_still_committed(
+    yields_before_accept: int,
+) -> None:
+    clock, sessions = FakeClock(), FakeSessions()
+    buffer = IngestionBuffer(capacity=10, clock=clock)
+    writer = make_writer(buffer, sessions, clock)
+    run = asyncio.create_task(writer.run())
+    await let_tasks_run()  # the writer now waits on an empty queue
+
+    writer.close()
+    for _ in range(yields_before_accept):
+        await asyncio.sleep(0)
+    assert not run.done(), "the writer already returned: nothing could take the event"
+    await buffer.accept(event(1))
+    async with asyncio.timeout(5):
+        await run
+
+    assert len(sessions.committed) == 1
+    assert buffer.total_uncommitted == 0, "the event stayed queued and reserved after run()"
+
+
+async def test_an_audit_row_that_fails_to_write_does_not_crash_the_writer() -> None:
+    clock = FakeClock()
+    sessions = FakeSessions(
+        [DataError("INSERT INTO traffic_records", {}, ValueError("bad"))],
+        audit_failure=RuntimeError("not a database error"),
+    )
+    buffer = IngestionBuffer(capacity=10, clock=clock)
+    await buffer.accept(event(1))
+    writer = make_writer(buffer, sessions, clock, batch_max_size=1)
+
+    async with running(writer):
+        await sessions.wait_for(lambda: len(sessions.attempts) == 1)
+        await let_tasks_run()
+        assert writer.state is WriterState.UNAVAILABLE
