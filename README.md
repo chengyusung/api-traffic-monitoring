@@ -239,11 +239,11 @@ curl -s "localhost:8000/api/v1/analytics/summary?service=payment" -H "Authorizat
 
 ## 開發方式（AI 輔助）
 
-實作與驗收約 **5 小時**（從第一個實作步驟 2026-10-31 15:37 UTC 到驗收完成 20:42 UTC 的實際時間，5 小時 5 分），使用 **Claude Code** 作為 coding agent。需求拆解、三份 ADR、`CLAUDE.md` 與測試計畫在實作之前完成，這段時間沒有記錄，所以不計入。
+實作與驗收約 **5 小時**（從第一個實作步驟 2026-10-31 15:37 UTC 到驗收完成 20:42 UTC 的實際時間，5 小時 5 分，不含之後的審查、修正與第二次驗收），使用 **Claude Code** 作為 coding agent。需求拆解、三份 ADR、`CLAUDE.md` 與測試計畫在實作之前完成，這段時間沒有記錄，所以不計入。
 
 我負責：需求拆解與 scope 取捨、三份 ADR 的決策、[`CLAUDE.md`](CLAUDE.md) 的規範與禁止事項、測試計畫，以及最後的審查與答辯。這些文件在寫任何程式之前，由我在 AI 協助下寫成。
 
-AI 負責：每個 milestone 的實作。coding agent 依一份寫好的任務說明（範圍、退出條件、硬規則）逐個 milestone 實作，包含程式、測試與 migration。每個 milestone 合併前，由另一個 AI coordinator session（不是人）重新驗證：在真實 MariaDB 上 `docker compose up`、在 api 容器內跑 pytest、用 curl 對照驗收步驟。我沒有逐個 milestone 審查；我看最後的結果，並為它負責。review log 引用的 mutation 檢查（改壞程式確認測試會失敗）是實作的 agent 自己跑的，沒有被獨立重跑。認證（M02）與即時推送（M03）兩個 milestone 另外做了一次多模型對抗審查，採納與駁回的項目記在 [`docs/ai-review-log.md`](docs/ai-review-log.md) 的 R-005、R-006。
+AI 負責：每個 milestone 的實作。coding agent 依一份寫好的任務說明（範圍、退出條件、硬規則）逐個 milestone 實作，包含程式、測試與 migration。每個 milestone 合併前，由另一個 AI coordinator session（不是人）重新驗證：在真實 MariaDB 上 `docker compose up`、在 api 容器內跑 pytest、用 curl 對照驗收步驟。我沒有逐個 milestone 審查；我看最後的結果，並為它負責。review log 引用的 mutation 檢查（改壞程式確認測試會失敗）是實作的 agent 自己跑的，沒有被獨立重跑。認證（M02）、即時推送（M03）、資料與管理（M04 和 M05 一起）另外做了三輪多模型對抗審查，每輪由三個不同的模型各自獨立審查，採納與駁回的項目記在 [`docs/ai-review-log.md`](docs/ai-review-log.md) 的 R-005 到 R-008。M04 與 M05 的審查在第一次驗收之後才進行，所以修正完成後驗收表重跑了一次，現在的驗收證據都在修正後的 commit 上。
 
 審查過程中發現並修正的問題逐筆記在 [`docs/ai-review-log.md`](docs/ai-review-log.md)，目前有 R-001 到 R-008。AI 第一版正確的部分也記錄驗證了什麼，不編造錯誤。
 
