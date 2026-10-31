@@ -2,7 +2,7 @@ from fastapi import APIRouter, WebSocket
 from fastapi.security.utils import get_authorization_scheme_param
 
 from app.api.deps import CurrentPipeline, Session, authenticate
-from app.core.errors import DATABASE_UNAVAILABLE, UnauthorizedError
+from app.core.errors import UnauthorizedError, database_unavailable
 from app.realtime.manager import CloseCode
 
 router = APIRouter(tags=["realtime"])
@@ -23,7 +23,9 @@ async def traffic(websocket: WebSocket, session: Session, pipeline: CurrentPipel
             _, claims = await authenticate(token, session)
     except UnauthorizedError:
         rejection = CloseCode.UNAUTHORIZED
-    except DATABASE_UNAVAILABLE:
+    except Exception as exc:
+        if not database_unavailable(exc):
+            raise
         rejection = CloseCode.TRY_AGAIN_LATER
     finally:
         # The socket can stay open for hours; it must not pin a pooled connection.

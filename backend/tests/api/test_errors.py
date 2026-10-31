@@ -1,18 +1,36 @@
 from collections.abc import AsyncIterator, Callable
 
+import asyncmy.errors
 import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import exc
 
 from app.core.errors import NotFoundError
 from app.main import create_app
+from tests.unit.test_writer_errors import server_error
 
-DB_ERRORS: dict[str, tuple[Callable[[], Exception], int]] = {
-    "OperationalError": (lambda: exc.OperationalError("SELECT 1", None, Exception("lost")), 503),
-    "InterfaceError": (lambda: exc.InterfaceError("SELECT 1", None, Exception("closed")), 503),
-    "pool TimeoutError": (lambda: exc.TimeoutError("QueuePool limit reached"), 503),
-    "IntegrityError": (lambda: exc.IntegrityError("INSERT", None, Exception("1452")), 500),
-    "DataError": (lambda: exc.DataError("INSERT", None, Exception("1406")), 500),
+# Real asyncmy errors: the errno, not the SQLAlchemy class, decides between 503 and 500.
+# name -> (exception, status, errno in the WARNING line of a 503)
+DB_ERRORS: dict[str, tuple[Callable[[], Exception], int, int | None]] = {
+    "2013 lost connection": (lambda: server_error(2013), 503, 2013),
+    "2003 cannot connect": (lambda: server_error(2003), 503, 2003),
+    "1213 deadlock": (lambda: server_error(1213), 503, 1213),
+    "invalidated connection": (
+        lambda: exc.DBAPIError.instance(
+            "SELECT 1",
+            {},
+            asyncmy.errors.InternalError(0, ""),
+            asyncmy.errors.Error,
+            connection_invalidated=True,
+        ),
+        503,
+        0,
+    ),
+    "pool TimeoutError": (lambda: exc.TimeoutError("QueuePool limit reached"), 503, None),
+    "4025 CHECK violation": (lambda: server_error(4025), 500, None),
+    "1054 unknown column": (lambda: server_error(1054), 500, None),
+    "1452 foreign key": (lambda: server_error(1452), 500, None),
+    "1406 data too long": (lambda: server_error(1406), 500, None),
 }
 
 
@@ -85,8 +103,10 @@ async def test_unhandled_exception_is_500_without_internal_details(probe: AsyncC
 
 
 @pytest.mark.parametrize("name", DB_ERRORS)
-async def test_only_connection_level_database_errors_are_503(probe: AsyncClient, name: str) -> None:
-    status = DB_ERRORS[name][1]
+async def test_only_connection_level_database_errors_are_503(
+    probe: AsyncClient, caplog: pytest.LogCaptureFixture, name: str
+) -> None:
+    _, status, errno = DB_ERRORS[name]
 
     response = await probe.get(f"/probe/db/{name}")
 
@@ -95,6 +115,11 @@ async def test_only_connection_level_database_errors_are_503(probe: AsyncClient,
     assert error["code"] == {503: "SERVICE_UNAVAILABLE", 500: "INTERNAL_SERVER_ERROR"}[status]
     assert error["request_id"] == response.headers["X-Request-ID"]
     assert "SELECT" not in response.text and "INSERT" not in response.text
+    logged = {(r.levelname, r.getMessage(), getattr(r, "errno", None)) for r in caplog.records}
+    if status == 503:
+        assert ("WARNING", "database unavailable", errno) in logged
+    else:
+        assert ("ERROR", "unhandled exception", None) in logged
 
 
 async def test_valid_incoming_request_id_is_echoed(probe: AsyncClient) -> None:

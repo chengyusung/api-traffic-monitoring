@@ -14,8 +14,39 @@ from app.core.logging import REQUEST_ID_HEADER
 
 logger = logging.getLogger(__name__)
 
-# Connection-level failures only: IntegrityError and DataError stay bugs or conflicts.
-DATABASE_UNAVAILABLE = (sa_exc.OperationalError, sa_exc.InterfaceError, sa_exc.TimeoutError)
+# asyncmy raises OperationalError for every server errno it does not map, CHECK and unknown
+# column included, so the class alone does not tell a lost connection from a bad statement.
+TRANSIENT_ERRNOS = frozenset(
+    {
+        2002,  # can't connect through the socket
+        2003,  # can't connect to the server
+        2006,  # server has gone away
+        2013,  # lost connection during query
+        2055,  # lost connection at the system level
+        1040,  # too many connections
+        1053,  # server shutdown in progress
+        1205,  # lock wait timeout
+        1213,  # deadlock
+        1927,  # connection killed
+        4031,  # disconnected by the server for inactivity
+    }
+)
+
+
+def driver_errno(exc: BaseException) -> int | None:
+    """The MariaDB error number; None for anything else, so no message text reaches a log."""
+    orig = getattr(exc, "orig", None)
+    code = orig.args[0] if orig is not None and orig.args else None
+    return code if isinstance(code, int) else None
+
+
+def database_unavailable(exc: BaseException) -> bool:
+    """A failure a later attempt can fix: the connection, a lock or a timeout, not the statement."""
+    if isinstance(exc, (TimeoutError, sa_exc.TimeoutError)):
+        return True
+    if not isinstance(exc, sa_exc.DBAPIError):
+        return False
+    return exc.connection_invalidated or driver_errno(exc) in TRANSIENT_ERRNOS
 
 
 class AppError(Exception):
@@ -101,11 +132,6 @@ async def _validation_error(request: Request, exc: RequestValidationError) -> JS
     return _error_response(request, HTTPStatus.UNPROCESSABLE_ENTITY, "VALIDATION_ERROR", message)
 
 
-async def _database_unavailable(request: Request, exc: Exception) -> JSONResponse:
-    logger.warning("database unavailable", extra={"error": type(exc).__name__})
-    return await _app_error(request, ServiceUnavailableError("Database unavailable."))
-
-
 async def _unhandled_error(request: Request, exc: Exception) -> JSONResponse:
     logger.exception(
         "unhandled exception", extra={"request_id": getattr(request.state, "request_id", None)}
@@ -115,10 +141,20 @@ async def _unhandled_error(request: Request, exc: Exception) -> JSONResponse:
     )
 
 
+async def _database_error(request: Request, exc: Exception) -> JSONResponse:
+    """503 only for what database_unavailable() accepts; a bad statement is a 500 bug."""
+    if not database_unavailable(exc):
+        return await _unhandled_error(request, exc)
+    logger.warning(
+        "database unavailable", extra={"error": type(exc).__name__, "errno": driver_errno(exc)}
+    )
+    return await _app_error(request, ServiceUnavailableError("Database unavailable."))
+
+
 def register_error_handlers(app: FastAPI) -> None:
     app.add_exception_handler(AppError, _app_error)
     app.add_exception_handler(HTTPException, _http_error)
     app.add_exception_handler(RequestValidationError, _validation_error)
-    for unavailable in DATABASE_UNAVAILABLE:
-        app.add_exception_handler(unavailable, _database_unavailable)
+    app.add_exception_handler(sa_exc.DBAPIError, _database_error)
+    app.add_exception_handler(sa_exc.TimeoutError, _database_error)
     app.add_exception_handler(Exception, _unhandled_error)
