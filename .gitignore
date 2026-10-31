@@ -1,5 +1,6 @@
 # env / secrets
 .env
+.env.local
 *.pem
 
 # python / uv

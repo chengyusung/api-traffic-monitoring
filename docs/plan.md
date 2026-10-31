@@ -27,6 +27,17 @@ P0 沒完成之前不碰 P1。P1 砍得掉，P0 砍不掉。
 
 總計約 15 小時。任一 milestone 超出預算 50% 就砍該 milestone 的非核心項，不向後面借時間。Live Monitor 放在 M03 是刻意的：P0 的 end-to-end 路徑要在 M03 結束時就能 demo，而不是等到所有頁面都做完。
 
+## 結果
+
+| # | 實際結果 | merge commit |
+|---|---|---|
+| M01 Foundation | compose 三個服務 healthy，`/health/ready` 200，`traffic_test` 存在，時間 round-trip 與 migration upgrade / downgrade 在真實 MariaDB 上通過 | 252d83a |
+| M02 Auth / Records | Argon2、JWT、三角色、Ownership、Records CRUD 與 bulk、稽核完成；多模型審查的 16 項修正已納入 | 964ea67 |
+| M03 Realtime | Buffer、Writer、Generator、WebSocket 與 Live Monitor 完成；停 DB 30 秒後 drain 且 `event_id` 無重複；審查後修正 16 項 | 6fd52c2 |
+| M04 Data | CSV / JSON 匯入（All-or-Nothing）、四個 analytics endpoint、Excel、Records 與 Analytics 頁完成 | 2e351e7 |
+| M05 Admin + Tests | `/admin/*` 與 Admin 頁完成；後端 339 個測試、前端 11 個測試通過 | 2798239 |
+| M06 Delivery | 文件與狀態表填入驗收結果；乾淨 clone 的完整流程尚未在 Docker Engine 上跑過，CI-01 在 push 後執行 | 未合併 |
+
 ## M03 實作順序
 
 1. `ingestion/buffer.py`：`Reservation`（semaphore）+ `asyncio.Queue` + `accept(event)`；先寫測試（100 筆、5 秒、容量含 in-flight、commit 後才 release、reserve 後 cancel 退回）。

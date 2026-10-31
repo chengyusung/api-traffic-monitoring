@@ -22,7 +22,7 @@
 - AI 產出：架構文件與 CLAUDE.md 初版指定 SQLAlchemy `DateTime(timezone=True)`。
 - 審查：MariaDB 是否真的保存時區資訊。
 - 發現與修正：MariaDB `DATETIME` 不存時區，`TIMESTAMP` 隨 session time zone 轉換；`timezone=True` 在 MariaDB dialect 上沒有實際效果，asyncmy 讀回 naive datetime。若照初版實作，`+08:00` 寫入後讀出會變成錯誤的時間。改為 `UTCDateTime` TypeDecorator（bind 轉 naive UTC、result 補 `tzinfo=UTC`、naive 輸入 raise）+ engine `init_command="SET time_zone='+00:00'"`。更新 architecture.md §5、CLAUDE.md。
-- 驗證：testing.md TZ-01 round-trip；狀態 NOT RUN。
+- 驗證：testing.md TZ-01 round-trip；實測結果見 testing.md 驗收證據 TZ-01（PASS）。
 
 ### R-002 測試資料庫不存在
 
@@ -30,7 +30,7 @@
 - AI 產出：`TEST_DATABASE_URL` 指向 `traffic_test`，compose 只設 `MARIADB_DATABASE=traffic`。
 - 審查：MariaDB 官方 image 的初始化行為。
 - 發現與修正：image 只建立 `MARIADB_DATABASE` 並對該庫授權，`traffic_test` 不會存在，測試第一次跑就會失敗。新增 `db/init/01-create-test-db.sh`（掛到 `/docker-entrypoint-initdb.d/`）建立 `${MARIADB_DATABASE}_test` 並授權給 `${MARIADB_USER}`。更新 architecture.md §2、§9、CLAUDE.md、`.env.example`。
-- 驗證：`docker compose down -v && docker compose up -d db`，然後 `docker compose exec db mariadb -u traffic -p -e 'SHOW DATABASES'` 應列出 `traffic_test`；狀態 NOT RUN。
+- 驗證：`docker compose down -v && docker compose up -d db`，然後 `docker compose exec db mariadb -u traffic -p -e 'SHOW DATABASES'` 應列出 `traffic_test`；實測結果見 testing.md DEP-03（PASS，全新 volume）。
 
 ### R-003 DB 故障時看不到故障
 
@@ -38,7 +38,7 @@
 - AI 產出：ADR-002 決定每個 request 從 DB 重讀 user、DB 不可用時 503；ADR-001 把 buffer 指標只放在 `/admin/system`。
 - 審查：兩個決策放在一起的後果。
 - 發現與修正：DB 中斷時 `/admin/system` 本身 503，而那正是最需要看 queue 水位的時候。把 ingestion 計數（非敏感的營運數字）放進不需認證的 `/health/ready` body；`/admin/system` 保留 pool 與資料表統計。更新 architecture.md §9、ADR-001 Consequences、ADR-002 Consequences。
-- 驗證：testing.md HEALTH-01；狀態 NOT RUN。
+- 驗證：testing.md HEALTH-01（PASS）。
 
 ## 實作階段
 
@@ -81,6 +81,7 @@
   - `docker compose exec -T api ruff check .`、`ruff format --check .` 皆 exit 0。
   - curl：admin 取 token 後 `GET /api/v1/records?page_size=5` 回 200 與 `{"items","page","page_size","total"}`；viewer `POST /api/v1/records` 回 403 `FORBIDDEN`，body 的 `request_id` 與 `X-Request-ID` 相同；register 帶 `"role":"ADMIN"` 回 422 `VALIDATION_ERROR`。
   - Mutation check（本機 `uv run pytest` 連 compose 的 MariaDB，每次改一處、跑完還原）：讓 USER 可改任何 record → 7 個測試失敗；threshold 改成 `>=` → 2 個失敗；value 修改時不重算、或改用 Service 目前的 threshold 重算 → 各 1 個失敗；decode 接受 `none` → `alg none` 測試失敗；拿掉角色檢查 → 4 個失敗；`UserRead` 加入 `password_hash` → conftest 的 response hook 讓 1 個測試失敗、49 個測試在建立身分時就 error；register 改成忽略多餘欄位 → 3 個失敗；不稽核登入失敗、允許停用帳號、DB 錯誤不轉 503 → 各 1 個失敗。拿掉 desc 排序的 `id` 次排序 → 1 個失敗；拿掉 asc 排序的 `id` 次排序 → 沒有測試失敗，因為 MariaDB 對相同值剛好依 PK 順序回傳，測試無法強迫它亂序。
+  - 多模型對抗審查（三個互相獨立的 reviewer 各自審查 M02，共 40 筆，無 critical）：三者都確認核心規則成立（HS256 固定、必要 claim、以 DB 的 role 授權、無權限回 404、登入失敗稽核先於 401 commit、排序白名單、`extra=forbid`、無原生 SQL）。採納 16 項並已修正，主要是 Argon2 雜湊與驗證移出 event loop（三者都提出）、DB 例外統一對應 503（三者都提出）、401 加 `WWW-Authenticate`、bootstrap 與 seed 的弱密碼啟動即失敗、設定拒絕含 `change-me` 的 JWT 密鑰、PATCH 空 body 回 422 並稽核每個變更欄位，以及補齊會在規則被拿掉時失敗的測試。暫不處理的有 PATCH / DELETE 的 row lock（單 worker demo，延後）、repository 與 schema 的分層一致性。駁回 `/auth/register` 是多餘 endpoint 的意見，因為規格的功能需求 1 要求使用者註冊，ADR-002 也有定義。
   - api log 中 grep `JWT_SECRET_KEY`、`ADMIN_PASSWORD`、兩個 demo 密碼、`MARIADB_PASSWORD` 的值，以及 `argon2`、`eyJ`（JWT 開頭），命中皆 0。
 
 ### R-006 M03 Realtime
@@ -103,6 +104,7 @@
   - 停 DB 30 秒：`/health/ready` 每 5 秒回 503 DEGRADED，`total_uncommitted` 21 → 36 → 51 → 66 → 81 → 96。同時 WS client 未斷線，每約 5 秒收到 15–18 則事件，並在停機約 1 秒後收到 DEGRADED 的 `status`。`docker compose start db` 後 15 秒回到 200 HEALTHY，20 秒時 `total_uncommitted` 為 0。`select count(*), count(distinct event_id) from traffic_records` 為 2547 / 2547。`system_logs` 有 `writer.recovered`（6 次失敗後成功）。
   - `docker compose stop api`：log 依序為 `Waiting for application shutdown.` → `ingestion stopped {"abandoned_events": 0}` → `Application shutdown complete.`。
   - Streamlit（frontend 容器內 `AppTest`，連真實 api）：錯誤密碼顯示對應訊息；登入後 Live 頁顯示連線狀態、最後事件時間、系統狀態、各 Service 最新值、「即時（尚未持久化）」標示與 2 張圖；連續 rerun 20 次，api 的 `active_connections` 每次都是 1；壞 token 收到 4401 後，receiver thread 結束、token 清除、Login 頁顯示過期提示；登出後 token 與 receiver 都清除，thread 數為 0。`docker compose restart frontend` 後 log 無 traceback。
+  - 多模型對抗審查（三個互相獨立的 reviewer 審查 M03，共 42 筆，其中有 critical）：三者都提出 Generator 在 Writer 永久失敗後沒有停下、慢 client 的清理路徑會漏、shutdown 時退避等待擋住關閉。採納 16 項並已修正，包括依 errno 分類 writer 錯誤（reviewer 實際執行 asyncmy 例外確認 4025 與 1054 不該重試）、每次寫入加 `COMMIT_TIMEOUT_SECONDS` 上限、Generator 在 UNAVAILABLE 或 STOPPED 時停止、慢 client 以 1008 關閉並有送出逾時、health 狀態不閃動、receiver 迴圈任何例外都重連。有一項只有單一 reviewer 提出但被實際重現（關閉時佇列裡殘留事件），所以也採納。駁回兩項：對永久錯誤批次做 bisect 或隔離（ADR-001 已決定永久錯誤停機等人工處理，並把隔離列為待決事項），以及分頁關閉後遺留的 receiver（ADR-003 明確接受，並以 `WS_MAX_CONNECTIONS` 限制上限）。
   - 未驗證：`st.fragment(run_every=1)` 在瀏覽器中每秒自動刷新（`AppTest` 只會同步執行 fragment，不會觸發計時器），以及圖表的實際外觀；兩者留給瀏覽器人工檢查。GitHub Actions：NOT RUN。
 
 ### R-007 M04 Data
