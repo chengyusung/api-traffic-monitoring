@@ -70,12 +70,12 @@ flowchart LR
 
 ## 快速開始（Docker）
 
-需要 Docker Engine 24+ 與 Docker Compose v2。
+需要 Docker Compose v2。作者在 macOS 上以 Podman 5.7（docker CLI）驗證；Docker Engine 沒有在本機測過，由 GitHub Actions 驗證。
 
 ```bash
 git clone <repo-url> && cd api-traffic-monitoring
 cp .env.example .env            # 至少修改 JWT_SECRET_KEY（openssl rand -hex 32）與密碼
-docker compose up --build       # 第一次約 2–3 分鐘
+docker compose up --build
 ```
 
 | 服務 | URL |
@@ -113,15 +113,19 @@ docker compose down -v                     # 停止並刪除資料 volume
 
 需要 Python 3.12、[uv](https://docs.astral.sh/uv/) 與一個可連線的 MariaDB 11.7。最簡單的做法是只啟動 compose 的 `db`（`docker compose up -d db`），它把 3306 綁在 `127.0.0.1`。
 
+`.env` 的 `DATABASE_URL` 與 `TEST_DATABASE_URL` 指向主機名 `db`，只有 compose 網路內解析得到。主機上直接跑會連線失敗（`Can't connect to MySQL server on 'db'`）。所以另存一份 `.env.local`，把主機名換成 `127.0.0.1`，`.env` 留給 compose 使用。
+
 ```bash
-cp .env.example .env     # 把 DATABASE_URL / TEST_DATABASE_URL 的 @db: 改成 @127.0.0.1:
+cp .env.example .env     # 先改 JWT_SECRET_KEY
+sed 's/@db:/@127.0.0.1:/' .env > .env.local    # .env.local 已列入 .gitignore
+docker compose up -d --wait db
 
 # 後端
 cd backend
 uv sync
-uv run --env-file ../.env alembic upgrade head
-uv run --env-file ../.env uvicorn app.main:app --reload --port 8000
-uv run --env-file ../.env pytest -q     # 測試（traffic_test 由 db/init 建立）
+uv run --env-file ../.env.local alembic upgrade head
+uv run --env-file ../.env.local uvicorn app.main:app --reload --port 8000
+uv run --env-file ../.env.local pytest -q     # 測試（traffic_test 由 db/init 建立）
 
 # 前端（另一個終端）
 cd frontend
@@ -130,6 +134,8 @@ API_BASE_URL=http://localhost:8000/api/v1 \
 API_WS_URL=ws://localhost:8000/api/v1/ws/traffic \
 uv run streamlit run app.py
 ```
+
+不想建檔時，也可以在命令前直接給變數，例如 `DATABASE_URL=mysql+asyncmy://traffic:change-me@127.0.0.1:3306/traffic JWT_SECRET_KEY=$(openssl rand -hex 32) uv run alembic upgrade head`。`app/core/config.py` 在 import 時就讀取設定，所以 `DATABASE_URL` 與 `JWT_SECRET_KEY` 兩個必填值缺一個都會失敗。
 
 ## API 文件
 
@@ -205,6 +211,8 @@ curl -s "localhost:8000/api/v1/analytics/summary?service=payment" -H "Authorizat
     ├── testing.md
     ├── scaling-roadmap.md
     ├── ai-review-log.md
+    ├── development-process.md
+    ├── project-slides.html
     └── decisions/
         ├── 001-ingestion-buffer.md
         ├── 002-authentication-rbac.md
@@ -223,18 +231,20 @@ curl -s "localhost:8000/api/v1/analytics/summary?service=payment" -H "Authorizat
 | [測試計畫](docs/testing.md) | 測試層次、必測案例、驗收證據表 |
 | [開發計畫](docs/plan.md) | Milestones、退出條件、砍掉的範圍 |
 | [AI Review Log](docs/ai-review-log.md) | AI 產出 → 審查 → 修正 → 驗證 的逐筆紀錄 |
+| [docs/development-process.md](docs/development-process.md)（開發經過） | 各 milestone 怎麼做、怎麼驗證 |
+| [docs/project-slides.html](docs/project-slides.html)（專案簡報） | 專案簡報 |
 
 ## 開發方式（AI 輔助）
 
-本專案在約 **__ 小時**內完成，使用 **__（例：Claude Code）** 作為 coding agent。
+實作與驗收約 **5 小時**（從第一個實作步驟 2026-10-31 15:37 UTC 到驗收完成 20:42 UTC 的實際時間，5 小時 5 分），使用 **Claude Code** 作為 coding agent。需求拆解、三份 ADR、`CLAUDE.md` 與測試計畫在實作之前完成，這段時間沒有記錄，所以不計入。
 
-我負責：需求拆解與 scope 取捨、架構與三份 ADR 的決策、[`CLAUDE.md`](CLAUDE.md) 的規範與禁止事項、每個 milestone 的 code review、測試案例設計與驗證、文件最終定稿。
+我負責：需求拆解與 scope 取捨、三份 ADR 的決策、[`CLAUDE.md`](CLAUDE.md) 的規範與禁止事項、測試計畫，以及最後的審查與答辯。這些文件在寫任何程式之前，由我在 AI 協助下寫成。
 
-AI 負責：模組骨架與 CRUD 樣板、Pydantic schema、Alembic migration 初稿、測試程式初稿、文件格式整理。
+AI 負責：每個 milestone 的實作。coding agent 依一份寫好的任務說明（範圍、退出條件、硬規則）逐個 milestone 實作，包含程式、測試與 migration。每個 milestone 合併前，另一個獨立的 reviewer 重新驗證：在真實 MariaDB 上 `docker compose up`、在 api 容器內跑 pytest、用 curl 對照驗收步驟。認證（M02）與即時推送（M03）兩個 milestone 另外做了一次多模型對抗審查，採納與駁回的項目記在 [`docs/ai-review-log.md`](docs/ai-review-log.md) 的 R-005、R-006。
 
-審查過程中發現並修正的問題逐筆記在 [`docs/ai-review-log.md`](docs/ai-review-log.md)。設計階段已有三筆：MariaDB 時間欄位不存時區（初版用 `DateTime(timezone=True)`）、官方 image 不會建立測試資料庫、DB 故障時 admin 端點因授權依賴 DB 而不可用。實作階段的紀錄隨每個 milestone 補上；AI 第一版正確的部分也記錄驗證了什麼，不編造錯誤。
+審查過程中發現並修正的問題逐筆記在 [`docs/ai-review-log.md`](docs/ai-review-log.md)，目前有 R-001 到 R-008。AI 第一版正確的部分也記錄驗證了什麼，不編造錯誤。
 
-Commit history 依 [`docs/plan.md`](docs/plan.md) 的 milestone 分組，每個 commit 說明做了什麼與怎麼驗證。
+Commit history 依 [`docs/plan.md`](docs/plan.md) 的 milestone 分組，commit 是 Conventional Commits 的單行標題；驗證過程與結果在 review log 與 [`docs/testing.md`](docs/testing.md)。
 
 ## 測試
 
@@ -247,23 +257,23 @@ docker compose exec api ruff check . && docker compose exec api ruff format --ch
 
 ## 交付狀態
 
-圖例：✅ PASS、❌ FAIL、⏸ 未實作、⬜ 未執行。證據欄填 commit / 命令 / 截圖位置。
+圖例：✅ PASS、❌ FAIL、⏸ 未實作、⬜ 未執行。證據欄是 commit 加上證明它的觀察結果；完整命令、exit code 與環境見 [`docs/testing.md`](docs/testing.md) 的驗收證據。環境是 macOS 上的 Podman 5.7（docker CLI），commit 2798239（M05 合併點）；Docker Engine 沒有在本機測過。
 
 | ID | 驗收 | 狀態 | 證據 |
 |---|---|---|---|
-| DEP-01 | 乾淨 clone → `docker compose up --build` → Swagger、UI 登入 | ⬜ | |
-| DEP-02 | `down` / `up` 後資料保留 | ⬜ | |
-| AUTH-01 | VIEWER 不可寫；USER 不可動他人資料；register 不可升權 | ⬜ | |
-| AUTH-02 | WebSocket 無 token / 過期 → 4401 | ⬜ | |
-| HEALTH-01 | 停 DB 時 `/health/ready` 不需認證回 503，body 含 DEGRADED 與計數 | ⬜ | |
-| REC-01 | CRUD、分頁 / 篩選 / 排序、bulk | ⬜ | |
-| IMP-01 | CSV / JSON 匯入 All-or-Nothing | ⬜ | |
-| BUF-01 | 100 筆或 5 秒 flush；容量含 in-flight | ⬜ | |
-| RETRY-01 | DB 停 30 秒恢復後 drain，`event_id` 無重複 | ⬜ | |
-| WS-01 | Live 先於 DB 出現事件；rerun 不重複 receiver | ⬜ | |
-| ANA-01 | summary / categories / trends 對帳；Excel 可開 | ⬜ | |
-| ADM-01 | 使用者管理、threshold、系統日誌、系統狀態 | ⬜ | |
-| CI-01 | GitHub Actions：ruff + pytest + docker build | ⬜ | |
+| DEP-01 | 乾淨 clone → `docker compose up --build` → Swagger、UI 登入 | ✅ | 2798239；`docker compose up --build -d --wait` exit 0，ready 200、`/docs` 200、三個帳號登入 200 |
+| DEP-02 | `down` / `up` 後資料保留 | ✅ | 2798239；`down` 後 `up`，record 137 仍回 200，volume 保留 |
+| AUTH-01 | VIEWER 不可寫；USER 不可動他人資料；register 不可升權 | ✅ | 2798239；viewer `POST /records` 403，筆數前後都是 99；user 改刪他人資料 404；`role=ADMIN` 註冊 422 |
+| AUTH-02 | WebSocket 無 token / 過期 → 4401 | ✅ | 2798239；無 token 連 WS 收到 close 4401；有效 token 第一則是 `status` |
+| HEALTH-01 | 停 DB 時 `/health/ready` 不需認證回 503，body 含 DEGRADED 與計數 | ✅ | 2798239；停 DB 後不帶 token 的 `/health/ready` 回 503，`DEGRADED`，`total_uncommitted` 45 到 141；`/admin/system` 503 |
+| REC-01 | CRUD、分頁 / 篩選 / 排序、bulk | ✅ | 2798239；總數 99 = 33 + 33 + 33，分頁不重疊，升降冪排序正確，`page_size=101` 422 |
+| IMP-01 | CSV / JSON 匯入 All-or-Nothing | ✅ | 2798239；CSV 15 列 201；`value=-1` 整批 422 並指出第 4 列；筆數不變，batch 記 FAILED |
+| BUF-01 | 100 筆或 5 秒 flush；容量含 in-flight | ✅ | 2798239；每秒取樣 307 次，`queued + in_flight + retry_pending` 恆等於 `total_uncommitted`，最大 141，未超過 1,000；`last_commit_at` 在 6 秒內推進，共 42 個不同值 |
+| RETRY-01 | DB 停 30 秒恢復後 drain，`event_id` 無重複 | ✅ | 2798239；停 DB 30 秒，35 秒後 HEALTHY；多寫 153 筆 = 51 秒 × 3 筆；`count(*)` 888 = `count(distinct event_id)` 888 |
+| WS-01 | Live 先於 DB 出現事件；rerun 不重複 receiver | ✅ | 2798239；三次都是 client 先收到事件、+0.01 秒查不到、+6.5 秒查得到；20 次 rerun 後 `active_connections` 為 1（AppTest，非真瀏覽器） |
+| ANA-01 | summary / categories / trends 對帳；Excel 可開 | ✅ | 2798239；固定 `end` 後 payment 的 summary 313 = records total 313；categories 加總 941 = summary；趨勢 9 個 bucket 加總 313；Excel 以 openpyxl 開啟共 314 列，扣標頭 = 313 |
+| ADM-01 | 使用者管理、threshold、系統日誌、系統狀態 | ✅ | 2798239；viewer 改 USER 後舊 token `POST /records` 201，改回 403；停用或降級自己 422；`/admin/logs` 有 2 筆 `user.updated` |
+| CI-01 | GitHub Actions：ruff + pytest + docker build | ⬜ | GitHub Actions 在 push 之後才會跑；本機只跑過同一組 `uvx ruff` 指令（exit 0） |
 
 ## 已知限制
 
@@ -276,6 +286,17 @@ docker compose exec api ruff check . && docker compose exec api ruff format --ch
 - WebSocket 斷線區間無 replay；用 Records 的時間區間查詢補看。
 - 同 `event_id` 不同內容的衝突未偵測；永久錯誤批次只保留在記憶體，需人工介入。
 - Manual / Import 的資料不廣播到 Live Monitor。
+- 登入吞吐量受 CPU 限制（每次 Argon2 驗證約 28 ms，同時最多 2 個）；沒有 rate limit。
+- api 容器以 `INSTALL_DEV=true` 建置，裡面有 pytest 與 ruff，所以測試能在容器內跑；production 建置要用 `--no-dev`。
+- 本地運行時 `DATABASE_URL` 要指向 `127.0.0.1`，不能沿用 compose 用的 `db`（見上方「本地運行」）。
+- compose 的 healthcheck 用 `CMD-SHELL`，因為 Podman 把 exec 形式的 `python -c` 引數切開。Docker Engine 上沒有重新驗證，預期由 GitHub Actions 確認。
+- 所有 DB 連線層級錯誤與 1020（snapshot conflict）都回 503 `Database unavailable`；1020 實際上是可重送的衝突，用 409 會更精確。其他 DB 錯誤回 500。
+- `IMPORT_MAX_BYTES` 在檔案被讀取時才檢查，此時 Starlette 已經緩衝了整個上傳；要在邊界擋住過大的檔案，需要 reverse proxy 的大小限制。
+- 匯入的資料 commit 之後，若寫 `import_batches` 失敗，client 會收到 503；沒有 `event_id` 的列重送會重複寫入。
+- Streamlit 側欄對所有角色都列出 Admin 頁；非 ADMIN 點進去只看到提示，API 本身回 403。
+- `system_logs` 沒有 `created_at` 與 `event_type` 的索引，`/admin/logs` 是掃表，demo 資料量下沒問題。`/admin/system` 每次呼叫對五張表做 count，資料量到百萬列時可能逼近 10 秒的 asyncmy `read_timeout`。
+- 前端單元測試（`WS-02` 用到的 AppTest）第一次在乾淨環境執行時，有一次因 10 秒逾時失敗，之後三次重跑都通過（0.6 到 0.7 秒），推測是冷啟動，未證實。CI 的第一次執行可能遇到同樣的情況。
+- 瀏覽器中的實際畫面（`st.fragment(run_every=1)` 的每秒刷新、圖表外觀、檔案上傳元件）沒有驗證；自動化只到 Streamlit `AppTest`。
 - 未做：rate limit、refresh token、多實例、broker。
 
 ## 授權
