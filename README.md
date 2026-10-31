@@ -294,7 +294,7 @@ docker compose exec api ruff check . && docker compose exec api ruff format --ch
 - 授權每個 request 都查 DB，所以 DB 故障期間所有需認證的端點（含 `/admin/*`）回 503；故障觀察靠不需認證的 `/health/ready` 與 WebSocket `status` 訊息。`/health/ready` 此時也回 503，但 body 仍帶完整計數；readiness 與指標合在一個端點是 MVP 的簡化，production 應拆出 `/metrics`。
 - DB 暫時故障後恢復（不丟資料）與應用程式 crash 後恢復（丟未 commit 資料）是兩件事；本系統只保證前者。
 - WebSocket 斷線區間無 replay；用 Records 的時間區間查詢補看。
-- 同 `event_id` 不同內容的衝突未偵測；永久錯誤批次只保留在記憶體，需人工介入。
+- 同 `event_id` 不同內容的衝突不會被拒絕。若既有的列不是 SIMULATOR（例如有人用 WebSocket 上看到的 `event_id` 匯入或手動建立），Writer 會丟棄那筆模擬事件並記一行 WARNING，列出這些 `event_id`。永久錯誤批次只保留在記憶體，需人工介入。
 - Manual / Import 的資料不廣播到 Live Monitor。
 - 登入吞吐量受 CPU 限制（每次 Argon2 驗證約 28 ms，同時最多 2 個）；沒有 rate limit。
 - api 容器以 `INSTALL_DEV=true` 建置，裡面有 pytest 與 ruff，所以測試能在容器內跑；production 建置要用 `--no-dev`。

@@ -1,6 +1,8 @@
+import logging
 import uuid
 from datetime import UTC, datetime
 
+import pytest
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -108,3 +110,27 @@ async def test_a_foreign_key_violation_stops_the_writer_keeps_the_batch_and_is_a
         logs = list(await session.scalars(select(SystemLog)))
     assert [(log.level, log.event_type) for log in logs] == [("ERROR", "writer.failed")]
     assert logs[0].context == {"error": "IntegrityError", "batch_size": 1}
+
+
+async def test_a_simulator_event_id_taken_by_a_manual_row_is_dropped_with_a_warning(
+    session_factory: async_sessionmaker[AsyncSession],
+    services: dict[str, int],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    events = [event(services["payment"], n) for n in range(3)]
+    async with session_factory() as session:
+        # A client that saw events[1] on the WebSocket and created a record with its event_id.
+        taken = to_record(events[1], datetime(2026, 10, 31, 11, 30, 5, tzinfo=UTC))
+        taken.source = RecordSource.MANUAL
+        session.add(taken)
+        await session.commit()
+    buffer = await accepted(events)
+
+    with caplog.at_level(logging.WARNING, logger="app.ingestion.writer"):
+        await flush_and_stop(buffer, session_factory)
+
+    rows = {row.event_id: row.source for row in await stored(session_factory)}
+    assert rows[events[1].event_id] == RecordSource.MANUAL
+    assert len(rows) == 3 and buffer.total_uncommitted == 0
+    [warning] = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert getattr(warning, "event_ids", None) == [events[1].event_id]

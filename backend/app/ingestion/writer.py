@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.core.errors import database_unavailable
 from app.db import is_duplicate_key
 from app.ingestion.buffer import IngestionBuffer, IngestionEvent, IngestionStats, WriterState
-from app.models import AuditEvent, AuditLevel, TrafficRecord, utcnow
+from app.models import AuditEvent, AuditLevel, RecordSource, TrafficRecord, utcnow
 from app.services import audit
 
 logger = logging.getLogger(__name__)
@@ -65,9 +65,17 @@ def records(events: list[IngestionEvent]) -> list[TrafficRecord]:
 async def missing_only(session: AsyncSession, batch: list[IngestionEvent]) -> list[IngestionEvent]:
     """The events of `batch` whose event_id is not stored yet."""
     ids = [event.event_id for event in batch]
-    stored = set(
-        await session.scalars(select(TrafficRecord.event_id).where(TrafficRecord.event_id.in_(ids)))
+    rows = await session.execute(
+        select(TrafficRecord.event_id, TrafficRecord.source).where(TrafficRecord.event_id.in_(ids))
     )
+    stored = dict(rows.all())
+    # Imports and manual records share the event_id space: a client that reused an id it saw
+    # on the WebSocket makes this simulator event the one that is dropped.
+    if collided := sorted(i for i, source in stored.items() if source != RecordSource.SIMULATOR):
+        logger.warning(
+            "simulator events dropped: event_id already stored by another source",
+            extra={"event_ids": collided},
+        )
     return [event for event in batch if event.event_id not in stored]
 
 
