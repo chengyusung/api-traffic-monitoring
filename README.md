@@ -283,7 +283,7 @@ docker compose exec api ruff check . && docker compose exec api ruff format --ch
 | ANA-01 | summary / categories / trends 對帳 | ✅ | 固定 `end` 後 payment 的 summary 313 = records total 313，categories 加總與趨勢加總一致（2798239） |
 | ANA-02 | Excel 匯出可開、列數與 filter 一致 | ✅ | openpyxl 開啟 314 列，扣標頭 = 313 = count（2798239） |
 | ADM-01 | Admin 管理：改角色下一個 request 生效；停用或降級自己被拒 | ✅ | live 驗證改角色立即生效、停用或降級自己 422；兩個 ADMIN 並行互相降級的規則只由 integration test 覆蓋（2798239） |
-| CI-01 | GitHub Actions：ruff + pytest + docker build | ⬜ | workflow 還沒有跑過；本機只跑過同一組 `uvx ruff` 指令（exit 0） |
+| CI-01 | GitHub Actions：ruff + pytest + docker build | ⬜ | ci.yml 的每個 run step 於 2026-11-01 在本機依序重放，全部 exit 0；Actions 本身尚未執行 |
 
 ## 已知限制
 

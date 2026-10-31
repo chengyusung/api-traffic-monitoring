@@ -85,7 +85,7 @@ docker compose exec api ruff check . && docker compose exec api ruff format --ch
 
 | ID | 狀態 | 備註 |
 |---|---|---|
-| CI-01 | NOT RUN | ruff 與 format 檢查只在本機跑過同一組 `uvx ruff@0.17.3` 指令（exit 0），pytest 與 docker build 要等 GitHub Actions |
+| CI-01 | NOT RUN | ci.yml 的每個 run step 於 2026-11-01 在本機依序重放，全部 exit 0；Actions 本身尚未執行 |
 
 狀態只有 PASS / FAIL / BLOCKED / NOT RUN。每個 PASS 附 commit、日期，以及命令與觀察結果；exit code 只在取得時記錄，部分命令經 `tail` 讀取。只做到一部分的案例，在證據欄寫明哪一半有跑。FAIL 修正後重跑該列。PASS 代表該環境該案例通過，不代表 production ready。原始輸出與驗收用的腳本保存在作者本機，沒有放進 repo，所以每列都在證據欄寫出證明它的觀察結果。所有驗證都在 Podman 5.7 經由 docker CLI 執行，Docker Engine 與 GitHub Actions 都沒有跑過。
 
