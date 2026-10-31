@@ -13,10 +13,6 @@ Email = Annotated[
 ]
 
 
-def normalize_email(email: str) -> str:
-    return email.strip().lower()
-
-
 class UserCreate(BaseModel):
     # Startup validates env credentials with this model; its errors must not echo the password.
     model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)

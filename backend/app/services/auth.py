@@ -1,3 +1,4 @@
+from pydantic import TypeAdapter, ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import UnauthorizedError
@@ -5,8 +6,10 @@ from app.core.security import create_access_token, hash_password, verify_passwor
 from app.db import flush_or_conflict
 from app.models import Role, User
 from app.repositories import users
-from app.schemas.auth import UserCreate, normalize_email
+from app.schemas.auth import Email, UserCreate
 from app.services import audit
+
+_email = TypeAdapter(Email)
 
 
 async def register(session: AsyncSession, data: UserCreate) -> User:
@@ -31,9 +34,12 @@ async def register(session: AsyncSession, data: UserCreate) -> User:
     return user
 
 
-async def login(session: AsyncSession, email: str, password: str) -> str:
-    email = normalize_email(email)[:255]
-    user = await users.get_by_email(session, email)
+async def login(session: AsyncSession, username: str, password: str) -> str:
+    try:
+        email: str | None = _email.validate_python(username)
+    except ValidationError:
+        email = None
+    user = await users.get_by_email(session, email) if email else None
     verified = await verify_password(user.password_hash if user else None, password)
     if user is None or not verified or not user.is_active:
         audit.record_event(
@@ -41,7 +47,8 @@ async def login(session: AsyncSession, email: str, password: str) -> str:
             "auth.login",
             "login failed",
             level="WARNING",
-            context={"email": email, "result": "failure"},
+            # Only a well-formed address is stored; anything else is attacker-chosen text.
+            context={"email": email or "<invalid-email>", "result": "failure"},
         )
         await session.commit()
         # One message for every cause, so the response never says which part was wrong.

@@ -136,6 +136,29 @@ async def test_login_failures_are_identical_401s_and_audited(
     assert PASSWORD not in json.dumps(failures)
 
 
+async def test_login_normalizes_the_email_like_register(
+    client: AsyncClient, user_a: Identity
+) -> None:
+    response = await client.post(
+        TOKEN, data={"username": f"  {user_a.email.upper()} ", "password": PASSWORD}
+    )
+
+    assert response.status_code == 200, response.text
+
+
+@pytest.mark.parametrize(
+    "identifier", ["not-an-email", "x" * 250 + "@example.com"], ids=["no @", "over 255"]
+)
+async def test_failed_login_with_a_non_email_identifier_audits_a_placeholder(
+    client: AsyncClient, session_factory: async_sessionmaker[AsyncSession], identifier: str
+) -> None:
+    response = await client.post(TOKEN, data={"username": identifier, "password": PASSWORD})
+
+    error(response, 401, "UNAUTHORIZED")
+    [row] = await audit_rows(session_factory, "auth.login")
+    assert row.context == {"email": "<invalid-email>", "result": "failure"}
+
+
 async def test_inactive_user_cannot_log_in_or_use_an_old_token(
     client: AsyncClient, user_a: Identity, session_factory: async_sessionmaker[AsyncSession]
 ) -> None:
