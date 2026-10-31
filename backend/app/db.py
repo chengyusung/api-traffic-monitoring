@@ -1,5 +1,6 @@
 from collections.abc import AsyncIterator
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -8,6 +9,7 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from app.core.config import settings
+from app.core.errors import ConflictError
 
 
 def make_engine(url: str) -> AsyncEngine:
@@ -29,3 +31,13 @@ SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
 async def get_session() -> AsyncIterator[AsyncSession]:
     async with SessionLocal() as session:
         yield session
+
+
+async def flush_or_conflict(session: AsyncSession, message: str) -> None:
+    try:
+        await session.flush()
+    except IntegrityError as exc:
+        # MariaDB ER_DUP_ENTRY only; FK or CHECK violations are bugs, not conflicts.
+        if exc.orig is not None and exc.orig.args[0] == 1062:
+            raise ConflictError(message) from exc
+        raise
