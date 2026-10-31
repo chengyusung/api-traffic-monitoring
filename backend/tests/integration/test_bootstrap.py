@@ -1,5 +1,5 @@
 import pytest
-from pydantic import SecretStr
+from pydantic import SecretStr, ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -60,6 +60,35 @@ async def test_bootstrap_admin_without_config_fails_loudly(
     async with session_factory() as session:
         with pytest.raises(RuntimeError, match="ADMIN_EMAIL"):
             await bootstrap_admin(session, None, None)
+
+
+@pytest.mark.parametrize(
+    ("email", "password"),
+    [("admin@example.com", ""), ("admin@example.com", "s3cr3t"), ("not-an-email", "long-enough-1")],
+    ids=["empty password", "short password", "malformed email"],
+)
+async def test_bootstrap_admin_rejects_what_register_rejects(
+    session_factory: async_sessionmaker[AsyncSession], email: str, password: str
+) -> None:
+    async with session_factory() as session:
+        with pytest.raises(ValidationError) as rejected:
+            await bootstrap_admin(session, email, SecretStr(password))
+        assert await users_by_email(session) == {}
+    assert "s3cr3t" not in str(rejected.value)
+
+
+async def test_seed_demo_rejects_an_empty_password(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    accounts = [
+        (Role.USER, "user@example.com", SECRET),
+        (Role.VIEWER, "viewer@example.com", SecretStr("")),
+    ]
+    async with session_factory() as session:
+        with pytest.raises(ValidationError):
+            await seed_demo(session, accounts)
+    async with session_factory() as session:
+        assert await users_by_email(session) == {}
 
 
 async def test_seed_demo_is_idempotent_by_email(

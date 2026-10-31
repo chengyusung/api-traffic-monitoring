@@ -12,7 +12,7 @@ from app.core.security import hash_password
 from app.db import SessionLocal, engine
 from app.models import ApiService, Role, User
 from app.repositories import api_services, users
-from app.schemas.auth import normalize_email
+from app.schemas.auth import UserCreate
 
 logger = logging.getLogger("app.bootstrap")
 
@@ -40,16 +40,17 @@ async def bootstrap_admin(
         return False
     if not email or password is None:
         raise RuntimeError("No ADMIN exists and ADMIN_EMAIL / ADMIN_PASSWORD are not set.")
-    email = normalize_email(email)
-    if await users.get_by_email(session, email) is not None:
+    # Same email and password rules as POST /auth/register; a ValidationError stops startup.
+    account = UserCreate(email=email, password=password.get_secret_value())
+    if await users.get_by_email(session, account.email) is not None:
         # Promoting an account someone else registered would hand them admin rights.
         raise RuntimeError(
             "ADMIN_EMAIL belongs to an existing non-admin user; refusing to promote."
         )
     session.add(
         User(
-            email=email,
-            password_hash=await hash_password(password.get_secret_value()),
+            email=account.email,
+            password_hash=await hash_password(account.password),
             role=Role.ADMIN,
         )
     )
@@ -64,16 +65,16 @@ async def seed_demo(
     for role, email, password in accounts:
         if not email or password is None:
             raise RuntimeError(f"SEED_DEMO_DATA=true needs DEMO_{role}_EMAIL and _PASSWORD.")
-        email = normalize_email(email)
-        if await users.get_by_email(session, email) is None:
+        account = UserCreate(email=email, password=password.get_secret_value())
+        if await users.get_by_email(session, account.email) is None:
             session.add(
                 User(
-                    email=email,
-                    password_hash=await hash_password(password.get_secret_value()),
+                    email=account.email,
+                    password_hash=await hash_password(account.password),
                     role=role,
                 )
             )
-            created.append(email)
+            created.append(account.email)
     await session.commit()
     return created
 

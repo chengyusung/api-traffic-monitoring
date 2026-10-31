@@ -18,7 +18,8 @@ def normalize_email(email: str) -> str:
 
 
 class UserCreate(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    # Startup validates env credentials with this model; its errors must not echo the password.
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
 
     email: Email
     password: str = Field(min_length=8, max_length=128)
