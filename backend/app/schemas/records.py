@@ -5,7 +5,7 @@ from typing import Annotated, Literal, Self
 from pydantic import AfterValidator, AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from app.models import RecordSource
-from app.schemas import NonNegativeInt
+from app.schemas import NonNegativeInt, Pagination, PartialUpdate
 
 Title = Annotated[str, Field(min_length=1, max_length=255)]
 
@@ -35,20 +35,10 @@ class RecordCreate(BaseModel):
     observed_at: UTCInstant
 
 
-class RecordUpdate(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class RecordUpdate(PartialUpdate):
     title: Title | None = None
     value: NonNegativeInt | None = None
     observed_at: UTCInstant | None = None
-
-    @model_validator(mode="after")
-    def reject_empty_and_nulls(self) -> Self:
-        if not self.model_fields_set:
-            raise ValueError("send at least one of title, value, observed_at")
-        if nulls := sorted(name for name in self.model_fields_set if getattr(self, name) is None):
-            raise ValueError(f"cannot be null: {', '.join(nulls)}")
-        return self
 
 
 class RecordRead(BaseModel):
@@ -85,9 +75,7 @@ class RecordFilters(BaseModel):
         return self
 
 
-class RecordListQuery(RecordFilters):
-    page: int = Field(default=1, ge=1, le=10_000)
-    page_size: int = Field(default=20, ge=1, le=100)
+class RecordListQuery(RecordFilters, Pagination):
     sort: RecordSort = "-observed_at"
 
 

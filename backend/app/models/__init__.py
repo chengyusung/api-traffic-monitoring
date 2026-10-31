@@ -63,6 +63,7 @@ class AuditEvent(StrEnum):
 
     AUTH_LOGIN = "auth.login"
     AUTH_REGISTER = "auth.register"
+    USER_UPDATED = "user.updated"
     RECORD_UPDATED = "record.updated"
     RECORD_DELETED = "record.deleted"
     SERVICE_THRESHOLD_UPDATED = "service.threshold_updated"
