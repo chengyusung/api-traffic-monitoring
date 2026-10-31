@@ -344,3 +344,15 @@ async def test_cancelling_accept_at_any_await_point_never_leaks_capacity(
     later = asyncio.create_task(buffer.accept(event(2)))
     await let_tasks_run()
     assert later.done(), "a cancelled accept() kept its reservation"
+
+
+async def test_more_uncommitted_events_than_capacity_fail_loudly() -> None:
+    buffer = IngestionBuffer(capacity=2, clock=FakeClock())
+    for n in range(2):
+        await buffer.accept(event(n))
+    buffer.take_nowait()
+    buffer.take_nowait()
+    buffer._slots.release()  # a reservation freed without a commit: the bug this guards
+
+    with pytest.raises(AssertionError, match="more uncommitted events than capacity"):
+        await buffer.accept(event(3))

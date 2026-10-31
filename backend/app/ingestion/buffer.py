@@ -55,8 +55,9 @@ class IngestionBuffer:
         self._slots = asyncio.Semaphore(capacity)
         self._queue: asyncio.Queue[IngestionEvent] = asyncio.Queue(maxsize=capacity)
         # Accept times of uncommitted events, oldest first. The single writer commits in
-        # FIFO order, so release(n) always confirms the n oldest.
-        self._uncommitted: deque[float] = deque(maxlen=capacity)
+        # FIFO order, so release(n) always confirms the n oldest. Unbounded on purpose: the
+        # semaphore is the bound, and a maxlen would hide a breach by dropping accept times.
+        self._uncommitted: deque[float] = deque()
 
     async def accept(self, event: IngestionEvent) -> None:
         """Wait for a reservation, then enqueue. The reservation is held until release()."""
@@ -65,6 +66,7 @@ class IngestionBuffer:
         await self._slots.acquire()
         self._queue.put_nowait(event)
         self._uncommitted.append(self._clock())
+        assert len(self._uncommitted) <= self.capacity, "more uncommitted events than capacity"
 
     async def take(self) -> IngestionEvent:
         """The next event for the writer. Taking is not an ack: the reservation stays held."""
