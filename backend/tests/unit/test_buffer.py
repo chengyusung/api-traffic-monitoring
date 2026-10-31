@@ -5,6 +5,7 @@ from collections.abc import AsyncIterator, Callable, Iterable
 from contextlib import asynccontextmanager, suppress
 from datetime import UTC, datetime
 
+import asyncmy.errors
 import pytest
 from sqlalchemy.exc import DataError, OperationalError
 
@@ -133,7 +134,8 @@ def payload(row: TrafficRecord) -> tuple[object, ...]:
 
 
 def db_down() -> OperationalError:
-    return OperationalError("INSERT INTO traffic_records", {}, ConnectionError("db down"))
+    lost = asyncmy.errors.OperationalError(2013, "Lost connection to MySQL server during query")
+    return OperationalError("INSERT INTO traffic_records", {}, lost)
 
 
 def make_writer(

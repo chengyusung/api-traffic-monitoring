@@ -9,10 +9,10 @@ from datetime import datetime
 from typing import Any
 
 from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+from sqlalchemy.exc import DBAPIError, IntegrityError, SQLAlchemyError
+from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.core.errors import DATABASE_UNAVAILABLE
 from app.db import is_duplicate_key
 from app.ingestion.buffer import IngestionBuffer, IngestionEvent, IngestionStats, WriterState
 from app.models import TrafficRecord, utcnow
@@ -21,12 +21,37 @@ from app.services import audit
 logger = logging.getLogger(__name__)
 
 
+# asyncmy raises OperationalError for every server errno it does not map, CHECK and unknown
+# column included, so the class alone does not tell a lost connection from a bad batch.
+TRANSIENT_ERRNOS = frozenset(
+    {
+        2002,  # can't connect through the socket
+        2003,  # can't connect to the server
+        2006,  # server has gone away
+        2013,  # lost connection during query
+        2055,  # lost connection at the system level
+        1040,  # too many connections
+        1053,  # server shutdown in progress
+        1205,  # lock wait timeout
+        1213,  # deadlock
+        1927,  # connection killed
+        4031,  # disconnected by the server for inactivity
+    }
+)
+
+
 def is_transient(exc: Exception) -> bool:
-    """Connection-class failures are retried forever; anything else stops the writer."""
+    """What a later attempt can fix is retried forever; anything else stops the writer."""
+    if isinstance(exc, (TimeoutError, PoolTimeoutError)):
+        return True
+    if not isinstance(exc, DBAPIError):
+        return False
+    if exc.connection_invalidated:
+        return True
     if isinstance(exc, IntegrityError):
         # Only reachable when a row appeared between the dedupe query and the insert.
         return is_duplicate_key(exc)
-    return isinstance(exc, (*DATABASE_UNAVAILABLE, TimeoutError))
+    return exc.orig is not None and bool(exc.orig.args) and exc.orig.args[0] in TRANSIENT_ERRNOS
 
 
 def to_record(event: IngestionEvent, persisted_at: datetime) -> TrafficRecord:
