@@ -7,7 +7,7 @@ from httpx import AsyncClient
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.models import RecordSource, SystemLog, TrafficRecord
+from app.models import ApiService, RecordSource, SystemLog, TrafficRecord
 from tests.conftest import Identity
 
 RECORDS = "/api/v1/records"
@@ -154,6 +154,25 @@ async def test_invalid_record_is_422(
 
     assert response.status_code == 422
     assert response.json()["error"]["code"] == "VALIDATION_ERROR"
+    assert await record_count(session_factory) == 0
+
+
+async def test_an_inactive_service_is_unknown_for_new_records(
+    client: AsyncClient,
+    services: dict[str, int],
+    user_a: Identity,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async with session_factory() as session:
+        payment = await session.get(ApiService, services["payment"])
+        assert payment is not None
+        payment.is_active = False
+        await session.commit()
+
+    response = await client.post(RECORDS, json=new_record(), headers=user_a.headers)
+
+    assert response.status_code == 422
+    assert response.json()["error"]["message"] == "Unknown service_slug: payment"
     assert await record_count(session_factory) == 0
 
 

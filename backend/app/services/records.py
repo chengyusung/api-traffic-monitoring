@@ -45,7 +45,9 @@ async def create_records(
     session: AsyncSession, items: Sequence[RecordCreate], actor: User
 ) -> list[TrafficRecord]:
     """Insert every item in one transaction, or none of them."""
-    services = await api_services.get_by_slugs(session, (item.service_slug for item in items))
+    found = await api_services.get_by_slugs(session, (item.service_slug for item in items))
+    # An inactive service takes no new records, so for writers it does not exist.
+    services = {slug: service for slug, service in found.items() if service.is_active}
     if unknown := sorted({item.service_slug for item in items} - services.keys()):
         raise UnprocessableError(f"Unknown service_slug: {', '.join(unknown)}")
     persisted_at = utcnow()
