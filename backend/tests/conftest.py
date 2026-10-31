@@ -1,5 +1,5 @@
 import os
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -20,6 +20,12 @@ from app.pipeline import Pipeline
 
 TEST_DATABASE_URL = os.environ["TEST_DATABASE_URL"]
 PASSWORD = "correct-horse-battery"
+
+
+@pytest.fixture(autouse=True)
+def no_leaked_overrides() -> Iterator[None]:
+    yield
+    assert not app.dependency_overrides, f"leaked overrides: {list(app.dependency_overrides)}"
 
 
 @pytest.fixture(scope="session")
@@ -83,14 +89,20 @@ async def services(session_factory: async_sessionmaker[AsyncSession]) -> dict[st
 
 @pytest.fixture
 async def pipeline(
-    session_factory: async_sessionmaker[AsyncSession], services: dict[str, int]
+    client: AsyncClient,
+    session_factory: async_sessionmaker[AsyncSession],
+    services: dict[str, int],
 ) -> AsyncIterator[Pipeline]:
-    """A started pipeline on the test database. The simulator is off: tests call tick()."""
+    """A started pipeline on the test database. The simulator is off: tests call tick().
+
+    It depends on `client` so that every request it serves uses the test session override.
+    """
     pipeline = Pipeline.create(session_factory, simulator_enabled=False)
     app.dependency_overrides[get_pipeline] = lambda: pipeline
     await pipeline.start()
     yield pipeline
     await pipeline.stop()
+    app.dependency_overrides.pop(get_pipeline, None)
 
 
 @dataclass(frozen=True)
