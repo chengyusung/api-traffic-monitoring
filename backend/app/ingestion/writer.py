@@ -203,7 +203,8 @@ class BatchWriter:
         return self._buffer.take_nowait()
 
     async def _persist(self, batch: list[IngestionEvent]) -> bool:
-        """Commit the batch, retrying transient failures. False after a permanent failure."""
+        """Commit the batch, retrying transient failures. False after a permanent failure, or
+        when the last attempt after close() fails."""
         while True:
             self.state = WriterState.IN_FLIGHT
             last_attempt = self._closing.is_set()
