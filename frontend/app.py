@@ -27,6 +27,7 @@ if user is None:
             st.rerun()
 else:
     st.success(f"已登入：{user['email']}（{user['role']}）")
+    st.page_link("pages/1_Live_Monitor.py", label="前往 Live Monitor")
     if st.button("登出"):
         session.sign_out()
         st.rerun()

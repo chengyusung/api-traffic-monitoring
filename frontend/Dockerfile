@@ -11,6 +11,7 @@ WORKDIR /app
 COPY --from=builder /app/.venv /app/.venv
 COPY --chown=app:app app.py ./
 COPY --chown=app:app lib ./lib
+COPY --chown=app:app pages ./pages
 ENV PATH="/app/.venv/bin:$PATH" PYTHONUNBUFFERED=1
 USER app
 EXPOSE 8501
