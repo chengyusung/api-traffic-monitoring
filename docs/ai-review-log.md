@@ -82,3 +82,25 @@
   - curl：admin 取 token 後 `GET /api/v1/records?page_size=5` 回 200 與 `{"items","page","page_size","total"}`；viewer `POST /api/v1/records` 回 403 `FORBIDDEN`，body 的 `request_id` 與 `X-Request-ID` 相同；register 帶 `"role":"ADMIN"` 回 422 `VALIDATION_ERROR`。
   - Mutation check（本機 `uv run pytest` 連 compose 的 MariaDB，每次改一處、跑完還原）：讓 USER 可改任何 record → 7 個測試失敗；threshold 改成 `>=` → 2 個失敗；value 修改時不重算、或改用 Service 目前的 threshold 重算 → 各 1 個失敗；decode 接受 `none` → `alg none` 測試失敗；拿掉角色檢查 → 4 個失敗；`UserRead` 加入 `password_hash` → conftest 的 response hook 讓 1 個測試失敗、49 個測試在建立身分時就 error；register 改成忽略多餘欄位 → 3 個失敗；不稽核登入失敗、允許停用帳號、DB 錯誤不轉 503 → 各 1 個失敗。拿掉 desc 排序的 `id` 次排序 → 1 個失敗；拿掉 asc 排序的 `id` 次排序 → 沒有測試失敗，因為 MariaDB 對相同值剛好依 PK 順序回傳，測試無法強迫它亂序。
   - api log 中 grep `JWT_SECRET_KEY`、`ADMIN_PASSWORD`、兩個 demo 密碼、`MARIADB_PASSWORD` 的值，以及 `argon2`、`eyJ`（JWT 開頭），命中皆 0。
+
+### R-006 M03 Realtime
+
+- 任務：M03。`ingestion/buffer.py`（semaphore reservation、`asyncio.Queue` 排序、commit 後才 release）、`ingestion/writer.py`（100 筆或 5 秒、一批一個 transaction、full jitter 退避、duplicate 後只補缺的、永久錯誤停機並寫 `system_logs`）、`realtime/generator.py`（三個 Service、固定 seed、threshold 每 5 秒重載、先 accept 再 broadcast）、`realtime/manager.py`（每連線一個有界 queue 與 sender task、上限 100、`exp` 檢查）、`WS /api/v1/ws/traffic`、lifespan 啟停順序、`/health/ready` 真實計數與 §9 狀態機；Streamlit Login 與 Live Monitor。
+- AI 產出：buffer 與 writer 的單元測試先寫（fake session、虛擬時鐘：只有程式 sleep 時時間才前進），再寫實作。另外兩項來自規格本身：任務說明要求 handshake 失敗時「accept 前 close 4401」；ADR-003 同時規定 receiver `deque(maxlen=300)` 與 120 秒折線。
+- 審查：對 buffer / writer 規則逐條做 mutation check；在 api 容器內用 `websockets` client 實測 handshake；真的停 DB 30 秒；Streamlit `AppTest` 跑兩個頁面（frontend 容器內、連真實 api）。
+- 發現與修正：
+  1. Mutation check 有兩條規則沒被抓到。「`queue.get()` 當 ack」只改了 await 的取出路徑，但測試裡 writer 走 `take_nowait()`，所以 8 個測試全過；改成在兩條取出路徑都釋放容量後，容量測試失敗。「reserve 與 enqueue 之間多一個 await」也全過：原本的取消測試只走到 stdlib semaphore 已處理的「已分配但被取消」路徑。新增 `test_cancelling_accept_at_any_await_point_never_leaks_capacity`，在 `accept()` 的每個 await 點取消，之後抓到這個 mutation。修正在 commit `293c3af`。
+  2. 「accept 前 close 4401」：實測（同版 uvicorn 與 websockets）accept 前 close 時，client 收到的是 HTTP 403，close code 4401 不會送達。改成驗證完成前不註冊、不送任何資料，但先 accept 再 `close(4401)`，client 才讀得到 4401。程式內有註解說明原因。
+  3. ADR-003 同時規定 `deque(maxlen=300)` 與「近 120 秒」：每秒 3 筆，120 秒是 360 筆，超過 300。deque 只當 thread 與 script 之間的傳遞緩衝；頁面在 script thread 以 `event_id` 去重，另存一個依 `observed_at` 只留 120 秒的視窗。沒有資料的秒數不補值。
+  4. uvicorn 沒有安裝 WebSocket 實作就無法處理 upgrade。backend 加入 `websockets==17.4`，與 frontend lock 同版。
+  5. 文件沒寫的情況：handshake 時 DB 不可用。決定以 close `1013`（Try Again Later）拒絕，與連線數超過上限相同；不吞例外，也不當成 4401。
+  6. Writer 永久錯誤時，Generator 不會立刻停止，而是在 buffer 滿（約 333 秒）時被 backpressure 擋住。這段期間推送的事件已被接受但不會寫入，readiness 與 `status` 訊息同時是 UNAVAILABLE。ADR-001 的「連帶停止 Generator」目前靠容量上限達成。
+- 驗證（Podman、`docker compose`、MariaDB 11.7）：
+  - `docker compose exec -T api pytest -q` exit 0，200 passed、0 skipped。新增 37 個：`test_buffer.py` 11、`test_generator.py` 8、`test_writer.py` 3（真實 MariaDB）、`test_ws.py` 6、`test_health.py` 由 3 個改為 12 個。
+  - `ruff check`、`ruff format --check` 在 api 容器內與 CI 的 `uvx ruff@0.17.3 ... backend frontend` 皆 exit 0。
+  - Mutation check（buffer / writer 單元測試）：8 個 mutation 全部被抓到（commit 後才 release、`queue.get()` 不是 ack、reserve 與 enqueue 之間沒有 await、backoff 上限 30 秒、retry 沿用原事件、滿 100 筆不等計時器、永久錯誤不重試、空 queue 不開 transaction）。其中「commit 前先 release」造成 2 個失敗後卡住，被 30 秒 timeout 終止。Integration：「duplicate 就判整批成功」→ 1 個失敗（缺 2 筆）；「任何 IntegrityError 都重試」→ 永遠重試，20 秒 timeout 終止。
+  - 實際啟動後 20 秒：`/health/ready` 200 HEALTHY、`total_uncommitted` 0、`last_commit_at` 有值。api 容器內的 WS client：無 token 與壞 token 都收到 4401；有效 token 第一則是 `status`，之後 10.5 秒收到 31 則 `traffic.observed`（每 tick 3 則，tick 間最大間隔 1.01 秒）。
+  - 停 DB 30 秒：`/health/ready` 每 5 秒回 503 DEGRADED，`total_uncommitted` 21 → 36 → 51 → 66 → 81 → 96。同時 WS client 未斷線，每約 5 秒收到 15–18 則事件，並在停機約 1 秒後收到 DEGRADED 的 `status`。`docker compose start db` 後 15 秒回到 200 HEALTHY，20 秒時 `total_uncommitted` 為 0。`select count(*), count(distinct event_id) from traffic_records` 為 2547 / 2547。`system_logs` 有 `writer.recovered`（6 次失敗後成功）。
+  - `docker compose stop api`：log 依序為 `Waiting for application shutdown.` → `ingestion stopped {"abandoned_events": 0}` → `Application shutdown complete.`。
+  - Streamlit（frontend 容器內 `AppTest`，連真實 api）：錯誤密碼顯示對應訊息；登入後 Live 頁顯示連線狀態、最後事件時間、系統狀態、各 Service 最新值、「即時（尚未持久化）」標示與 2 張圖；連續 rerun 20 次，api 的 `active_connections` 每次都是 1；壞 token 收到 4401 後，receiver thread 結束、token 清除、Login 頁顯示過期提示；登出後 token 與 receiver 都清除，thread 數為 0。`docker compose restart frontend` 後 log 無 traceback。
+  - 未驗證：`st.fragment(run_every=1)` 在瀏覽器中每秒自動刷新（`AppTest` 只會同步執行 fragment，不會觸發計時器），以及圖表的實際外觀；兩者留給瀏覽器人工檢查。GitHub Actions：NOT RUN。
