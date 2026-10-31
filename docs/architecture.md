@@ -239,7 +239,7 @@ Compose：`db` 有 healthcheck（`healthcheck.sh --connect --innodb_initialized`
 
 `/health/live` 只檢查 process 與 event loop。Docker healthcheck 打 `/health/live` 而不是 `/health/ready`——uvicorn 在 migration 完成後才啟動，所以 live 成立就代表可以讓 `frontend` 啟動；而 DB 故障不會讓 container 被判 unhealthy、被編排器處置而丟掉 Queue。
 
-正常停止：停 Generator → Writer 在 10 秒內 flush 剩餘批次 → 關閉 WS 連線 → `engine.dispose()`。timeout 或 kill 時未 commit 的事件遺失，這是 MVP 已接受的邊界（ADR-001）。
+正常停止：停 Generator → Writer 在 10 秒內 flush 剩餘批次 → 關閉 WS 連線 → `engine.dispose()`。在 uvicorn 下，收到 SIGTERM 時 uvicorn 先以 close code `1012`（Service Restart）關閉所有 WebSocket，之後才執行 lifespan shutdown，所以 client 看到的是 `1012`，而且早於 Writer flush；lifespan 裡的 `close_all()`（`1001`）保留作為 server 沒有先關閉連線時的後備。timeout 或 kill 時未 commit 的事件遺失，這是 MVP 已接受的邊界（ADR-001）。
 
 ## 10. 日誌與稽核
 

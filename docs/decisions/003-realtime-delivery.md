@@ -59,6 +59,7 @@ Live Monitor 要每秒呈現三個 Service 的觀測與異常。歷史資料由 
 
 - 得到：即時畫面與持久化解耦；DB 故障期間已連線的 Live 可以持續到 buffer 滿為止；慢 client 不拖累全體。
 - 付出：Live 與 Analytics 暫時不一致（正常約 5 秒）；process crash 時已顯示的事件可能消失；斷線區間無 replay；DB 故障期間無法建立新連線（`1013`），已建立的連線不受影響。
+- 停止時 uvicorn 先以 `1012` 關閉所有連線，之後才執行 lifespan shutdown（停 Generator、Writer flush），所以 client 收到的是 `1012`，而且早於 flush；lifespan 的 `close_all()`（`1001`）只在 server 沒有先關閉連線時生效。
 - 測試用 barrier 暫停 Writer，證明 client 先收到、DB 尚無該事件；見 [testing.md](../testing.md) WS-*。
 
 ## Open items（已知未做，不是待定）
