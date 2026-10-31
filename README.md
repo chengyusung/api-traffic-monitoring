@@ -34,7 +34,7 @@ flowchart LR
 
   subgraph frontend["frontend · Streamlit"]
     UI["多頁面 UI<br/>Login · Live · Records · Analytics · Admin"]
-    RX["WS Receiver thread<br/>deque(maxlen=300)"]
+    RX["WS Receiver thread<br/>deque(maxlen=400)"]
   end
 
   subgraph api["api · FastAPI（單 worker）"]

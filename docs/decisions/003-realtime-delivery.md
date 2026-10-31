@@ -42,7 +42,7 @@ Live Monitor 要每秒呈現三個 Service 的觀測與異常。歷史資料由 
 
 **慢速 / 失敗 client 隔離**：每個連線一個 `asyncio.Queue(maxsize=100)` 與一個 sender task；broadcast 只對每個連線做 `put_nowait`，滿了就 close `1008` 並清理。單一連線的 send 失敗只移除該連線，不影響其他連線、Writer 或 reservation。零 client 時 Generator / Writer 照常運作。連線上限 100，超過拒絕。
 
-**Streamlit receiver**：每個 session 最多一個 receiver thread（`websockets` sync client），以 `st.session_state["ws_receiver"]` 持有，rerun 不重建。Receiver 是 daemon thread，只把訊息 append 到 `collections.deque(maxlen=300)`，不碰 `st.session_state` 或任何 `st.*` API——Streamlit 只保證 script thread 可以安全使用這些。UI 用 `st.fragment(run_every=1)` 在 script thread 讀 deque 更新折線圖（近 120 秒）與柱狀圖，並標示「即時（尚未持久化）」。以 `event_id` 去重。重連退避 1 → 2 → 4 … 最大 30 秒。畫面顯示 connected / reconnecting / stale 與最後事件時間。登出或 token 到期時以 `threading.Event` 停止 thread、清 token、清 deque。Streamlit 沒有可靠的 session 結束 hook：使用者直接關分頁時 thread 會殘留到 token 到期或 server 關閉連線，server 端 `WS_MAX_CONNECTIONS=100` 兜底。
+**Streamlit receiver**：每個 session 最多一個 receiver thread（`websockets` sync client），以 `st.session_state["ws_receiver"]` 持有，rerun 不重建。Receiver 是 daemon thread，只把訊息 append 到 `collections.deque(maxlen=400)`（近 120 秒 × 每秒 3 筆 = 360 筆，再留一點餘裕），不碰 `st.session_state` 或任何 `st.*` API——Streamlit 只保證 script thread 可以安全使用這些。UI 用 `st.fragment(run_every=1)` 在 script thread 讀 deque 更新折線圖（近 120 秒）與柱狀圖，並標示「即時（尚未持久化）」。以 `event_id` 去重。重連退避上限 1 → 2 → 4 … 最大 30 秒，加 full jitter；連線維持 10 秒以上才從 1 秒重來。Receiver 迴圈遇到任何例外都記 log 後重連，thread 不因此結束；若 thread 仍意外結束，下一次 rerun 換一個新的 receiver。畫面顯示 connected / reconnecting / stale 與最後事件時間。登出或 token 到期時以 `threading.Event` 停止 thread、清 token、清 deque。Streamlit 沒有可靠的 session 結束 hook：使用者直接關分頁時 thread 會殘留到 token 到期或 server 關閉連線，server 端 `WS_MAX_CONNECTIONS=100` 兜底。
 
 **Manual / Import 不廣播**：它們走同步 commit 路徑，不進 Queue；Live Monitor 只顯示 Simulator 流量。
 

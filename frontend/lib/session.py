@@ -43,12 +43,13 @@ def require_login() -> str:
 
 
 def receiver() -> Receiver:
-    """One receiver per session. Reruns reuse it; only sign_out() replaces it."""
-    if "ws_receiver" not in st.session_state:
-        receiver = Receiver(API_WS_URL, require_login())
-        receiver.start()
-        st.session_state["ws_receiver"] = receiver
-    return st.session_state["ws_receiver"]
+    """One receiver per session. Reruns reuse it; sign_out() or a crashed thread replaces it."""
+    current = st.session_state.get("ws_receiver")
+    if current is None or current.crashed:
+        current = Receiver(API_WS_URL, require_login())
+        current.start()
+        st.session_state["ws_receiver"] = current
+    return current
 
 
 def live_window() -> dict[str, Event]:
