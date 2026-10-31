@@ -1,5 +1,5 @@
 import os
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import urljoin
 
 import requests
@@ -116,6 +116,22 @@ def import_file(token: str, filename: str, content: bytes) -> dict[str, Any]:
         timeout=TRANSFER_TIMEOUT_SECONDS,
     )
     return _json(response)
+
+
+def analytics(
+    token: str, kind: Literal["summary", "categories", "trends"], params: dict[str, Any]
+) -> Any:
+    return _get(token, f"/analytics/{kind}", params)
+
+
+def export_xlsx(token: str, params: dict[str, Any]) -> bytes:
+    response = requests.get(
+        f"{API_BASE_URL}/analytics/export",
+        params=params,
+        headers=_auth(token),
+        timeout=TRANSFER_TIMEOUT_SECONDS,
+    )
+    return _check(response).content
 
 
 def get_readiness() -> dict[str, Any]:
