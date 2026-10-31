@@ -11,7 +11,7 @@ from app.core.security import hash_password
 from app.models import ImportBatch, ImportStatus, RecordSource, Role, SystemLog, TrafficRecord, User
 from app.services.imports import import_file
 
-SAMPLE = Path(__file__).resolve().parents[2] / "data" / "sample_traffic.csv"
+SAMPLE = Path(__file__).resolve().parents[3] / "data" / "sample_traffic.csv"
 SAMPLE_LINES = SAMPLE.read_text().splitlines()
 SAMPLE_ROWS = len(SAMPLE_LINES) - 1
 

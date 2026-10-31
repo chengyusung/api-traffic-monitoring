@@ -21,8 +21,8 @@ logger = logging.getLogger("app.bootstrap")
 
 # architecture.md §5: slug, display name, initial alert_threshold.
 SERVICES = (("auth", "Auth API", 80), ("orders", "Orders API", 150), ("payment", "Payment API", 80))
-# docker-compose.yml mounts the repository's data/ here.
-DEMO_RECORDS = Path(__file__).resolve().parents[1] / "data" / "sample_traffic.csv"
+# The repository's data/; docker-compose.yml mounts it at the same relative place.
+DEMO_RECORDS = Path(__file__).resolve().parents[2] / "data" / "sample_traffic.csv"
 
 
 async def ensure_services(session: AsyncSession) -> list[str]:

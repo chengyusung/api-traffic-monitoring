@@ -8,7 +8,7 @@ import pytest
 
 from app.services.imports import COLUMNS, parse
 
-DATA = Path(__file__).resolve().parents[2] / "data"
+DATA = Path(__file__).resolve().parents[3] / "data"
 SLUGS = {"auth", "orders", "payment"}
 GOOD = ",payment,checkout,50,2026-10-31T08:00:00Z"
 EVENT_ID = "3f8b2c6e-5a1d-4e7f-9b2a-0c4d6e8f1a23"

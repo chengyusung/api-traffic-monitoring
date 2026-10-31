@@ -7,7 +7,7 @@ from httpx import AsyncClient
 from tests.conftest import Identity
 
 IMPORTS = "/api/v1/imports"
-DATA = Path(__file__).resolve().parents[2] / "data"
+DATA = Path(__file__).resolve().parents[3] / "data"
 
 
 async def upload(client: AsyncClient, who: Identity, name: str, content: bytes) -> dict[str, Any]:
