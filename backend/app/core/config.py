@@ -26,6 +26,20 @@ class Settings(BaseSettings):
     demo_viewer_email: str | None = None
     demo_viewer_password: SecretStr | None = None
 
+    # ADR-001 / ADR-003 parameters.
+    simulator_enabled: bool = True
+    simulator_seed: int = 42
+    simulator_interval_seconds: float = Field(default=1, gt=0)
+    buffer_capacity: int = Field(default=1000, gt=0)
+    batch_max_size: int = Field(default=100, gt=0)
+    flush_interval_seconds: float = Field(default=5, gt=0)
+    retry_initial_backoff_seconds: float = Field(default=1, gt=0)
+    retry_max_backoff_seconds: float = Field(default=30, gt=0)
+    shutdown_flush_timeout_seconds: float = Field(default=10, gt=0)
+    threshold_reload_seconds: float = Field(default=5, gt=0)
+    ws_max_connections: int = Field(default=100, gt=0)
+    ws_per_connection_queue: int = Field(default=100, gt=0)
+
     @field_validator("jwt_secret_key")
     @classmethod
     def reject_placeholder(cls, value: SecretStr) -> SecretStr:
