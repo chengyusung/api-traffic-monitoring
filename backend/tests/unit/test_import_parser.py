@@ -103,6 +103,13 @@ def test_an_unknown_or_inactive_service_is_a_row_error() -> None:
     assert {(e["row"], e["field"]) for e in parsed.errors} == {(2, "service_slug")}
 
 
+@pytest.mark.parametrize("observed_at", ["1761897600", "2026"])
+def test_a_unix_time_observed_at_is_rejected(observed_at: str) -> None:
+    assert rejected(csv_file(f",payment,checkout,50,{observed_at}")) == {(2, "observed_at")}
+    json_value = int(observed_at)
+    assert rejected(json_file(json_row(observed_at=json_value)), "u.json") == {(1, "observed_at")}
+
+
 def test_a_naive_observed_at_is_rejected() -> None:
     assert rejected(csv_file(",payment,checkout,50,2026-10-31T08:00:00")) == {(2, "observed_at")}
 

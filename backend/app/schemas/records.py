@@ -1,8 +1,17 @@
+import re
 import uuid
 from datetime import UTC, datetime
-from typing import Annotated, Literal, Self
+from typing import Annotated, Any, Literal, Self
 
-from pydantic import AfterValidator, AwareDatetime, BaseModel, ConfigDict, Field, model_validator
+from pydantic import (
+    AfterValidator,
+    AwareDatetime,
+    BaseModel,
+    BeforeValidator,
+    ConfigDict,
+    Field,
+    model_validator,
+)
 
 from app.models import RecordSource
 from app.schemas import NonNegativeInt, Pagination, PartialUpdate
@@ -19,8 +28,18 @@ def _to_utc(value: datetime) -> datetime:
         raise ValueError("datetime has no UTC equivalent") from exc
 
 
+_NUMBER = re.compile(r"[+-]?(\d+\.?\d*|\.\d+)")
+
+
+def _reject_unix_time(value: Any) -> Any:
+    # Lax pydantic reads a number, or a string of digits such as "2026", as Unix time.
+    if isinstance(value, int | float) or (isinstance(value, str) and _NUMBER.fullmatch(value)):
+        raise ValueError("must be an ISO 8601 date-time with a time zone, not a number")
+    return value
+
+
 # Naive input is a 422; aware input is converted to UTC at the boundary.
-UTCInstant = Annotated[AwareDatetime, AfterValidator(_to_utc)]
+UTCInstant = Annotated[AwareDatetime, BeforeValidator(_reject_unix_time), AfterValidator(_to_utc)]
 # The only sort allowlist: each key is a TrafficRecord column; "-" means descending.
 RecordSort = Literal[
     "observed_at", "-observed_at", "value", "-value", "persisted_at", "-persisted_at"

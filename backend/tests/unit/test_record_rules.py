@@ -38,6 +38,12 @@ def test_naive_observed_at_is_rejected() -> None:
         RecordCreate.model_validate({**VALID, "observed_at": "2026-10-31T16:00:04"})
 
 
+@pytest.mark.parametrize("observed_at", [1_761_897_600, 1.7e9, "1761897600", "2026", "-5", 0])
+def test_observed_at_must_be_iso_8601_not_unix_time(observed_at: Any) -> None:
+    with pytest.raises(ValidationError, match="not a number"):
+        RecordCreate.model_validate({**VALID, "observed_at": observed_at})
+
+
 def test_observed_at_is_converted_to_utc() -> None:
     observed_at = RecordCreate.model_validate(VALID).observed_at
 

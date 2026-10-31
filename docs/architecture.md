@@ -113,7 +113,7 @@ sequenceDiagram
 
 ## 5. Domain Model
 
-一筆 `TrafficRecord` 是某 Service 在一秒區間內的 Request Count：`value` 為非負整數，不是延遲、百分比或累積 counter。內部與 DB 一律 UTC；API 收發含 timezone 的 ISO 8601；naive datetime 回 422，不依主機時區猜。
+一筆 `TrafficRecord` 是某 Service 在一秒區間內的 Request Count：`value` 為非負整數，不是延遲、百分比或累積 counter。內部與 DB 一律 UTC；API 收發含 timezone 的 ISO 8601；naive datetime 回 422，不依主機時區猜。數字或純數字字串（例如 `1761897600`、`2026`）也回 422：pydantic 預設會把它們當成 Unix time，`observed_at`、`start`、`end` 都不接受。
 
 MariaDB 的 `DATETIME` 不保存時區，`TIMESTAMP` 又會隨 session time zone 轉換，所以不用 SQLAlchemy 的 `DateTime(timezone=True)` 假裝有時區——在 MariaDB dialect 上它沒有實際效果，asyncmy 讀回來是 naive datetime。所有時間欄位改用自訂 `UTCDateTime` TypeDecorator（底層 `DATETIME(6)`）：bind 時 aware → naive UTC，result 時 naive → `tzinfo=UTC`，naive 輸入到 type 層直接 raise。engine `connect_args` 設 `init_command="SET time_zone='+00:00'"`：這是 driver 的連線參數，pool 每開一條實體連線都會執行，不是 startup 跑一次；若 asyncmy 版本不支援，改用 `event.listens_for(engine.sync_engine, "connect")`。兩層責任不同——TypeDecorator 管 Python aware ↔ DB naive UTC 的轉換，`SET time_zone` 管 session 語意（`TIMESTAMP`、`NOW()`）；應用程式不用 `TIMESTAMP` 欄位也不在 SQL 裡取 `NOW()`，所以後者是保險。round-trip 測試見 [testing.md](testing.md) TZ-01：比較的是同一時間點，不是 tzinfo 有沒有。
 
