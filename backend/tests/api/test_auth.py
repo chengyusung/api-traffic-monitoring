@@ -150,6 +150,20 @@ async def test_inactive_user_cannot_log_in_or_use_an_old_token(
     error(me, 401, "UNAUTHORIZED")
 
 
+async def test_a_corrupt_stored_hash_is_a_failed_login(
+    client: AsyncClient, session_factory: async_sessionmaker[AsyncSession]
+) -> None:
+    async with session_factory() as session:
+        session.add(User(email="corrupt@example.com", password_hash="not-argon2", role=Role.USER))
+        await session.commit()
+
+    response = await client.post(
+        TOKEN, data={"username": "corrupt@example.com", "password": PASSWORD}
+    )
+
+    error(response, 401, "UNAUTHORIZED")
+
+
 def b64(segment: dict[str, object]) -> str:
     return base64.urlsafe_b64encode(json.dumps(segment).encode()).rstrip(b"=").decode()
 

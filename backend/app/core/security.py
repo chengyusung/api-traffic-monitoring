@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta
 
 import jwt
 from argon2 import PasswordHasher
-from argon2.exceptions import VerificationError
+from argon2.exceptions import InvalidHashError, VerificationError
 
 from app.core.config import settings
 from app.core.errors import TokenExpiredError, UnauthorizedError
@@ -26,7 +26,7 @@ async def hash_password(password: str) -> str:
 def _verify(password_hash: str, password: str) -> bool:
     try:
         return _hasher.verify(password_hash, password)
-    except VerificationError:
+    except (VerificationError, InvalidHashError):
         return False
 
 
