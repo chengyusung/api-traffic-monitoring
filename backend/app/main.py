@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from app.api import health
+from app.api import auth, health, records, services
 from app.core.config import settings
 from app.core.errors import register_error_handlers
 from app.core.logging import RequestContextMiddleware, setup_logging
@@ -22,6 +22,8 @@ def create_app() -> FastAPI:
     app.add_middleware(RequestContextMiddleware)
     register_error_handlers(app)
     app.include_router(health.router)
+    for router in (auth.router, services.router, records.router):
+        app.include_router(router, prefix="/api/v1")
     return app
 
 
