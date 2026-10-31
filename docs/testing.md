@@ -61,7 +61,7 @@ docker compose exec api ruff check . && docker compose exec api ruff format --ch
 | DEP-01 | 一鍵啟動 | 乾淨 clone → `docker compose up --build` → ready 200、`/docs`、UI 登入 | PASS | `docker compose up --build -d --wait`（exit 0）；ready 200、`/docs` 200、三個帳號 `/auth/token` 與 `/auth/me` 皆 200，角色為 ADMIN / USER / VIEWER。登入以 API 驗證，沒有在瀏覽器操作 UI；驗收在 worktree 內執行，不是乾淨 clone |
 | DEP-02 | Volume 持久化 | `down` 後 `up` 資料仍在 | PASS | `docker compose down` 再 `up -d --wait`；volume `db-data` 仍在，`GET /records/137` 回 200，`observed_at` 為 `2026-10-31T08:00:04Z`（down / up 的 exit code 經 `tail` 讀取，未單獨記錄，以輸出為證） |
 | DEP-03a | 測試庫初始化（全新 volume） | 全新 volume：`traffic_test` 存在 | PASS | `docker compose down -v`（exit 0）、`up --build -d --wait`（exit 0）；`SHOW DATABASES` 列出 `traffic_test`，ready 200 |
-| DEP-03b | 測試庫初始化（既有 volume） | 既有 volume：`traffic_test` 不存在，`down -v` 後存在（initdb 只跑一次） | NOT RUN | 沒有在既有 volume 上執行 |
+| DEP-03b | 測試庫初始化（既有 volume） | 既有 volume：`traffic_test` 不存在，`down -v` 後存在（initdb 只跑一次） | PASS | 2026-11-01，commit f31f41f：用不掛載 `db/init` 的 override 在 `db-data` 上 `up -d --wait db`（exit 0），`SHOW DATABASES` 只有 `traffic`、沒有 `traffic_test`；`stop db` 後在同一個 volume 上 `up --build -d --wait`（exit 0），`SHOW DATABASES` 仍然沒有 `traffic_test`（`pytest tests/api/test_health.py` 在 setup 失敗：`Access denied for user 'traffic'@'%' to database 'traffic_test'`）；`down -v` 後 `up --build -d --wait`（exit 0），`SHOW DATABASES` 列出 `traffic_test`，`/health/ready` 200 |
 | AUTH-01 | VIEWER 不可寫 | `POST /records` → 403，DB 不變 | PASS | viewer `POST /api/v1/records` 回 403 `FORBIDDEN`，筆數前後都是 99 |
 | AUTH-02 | Ownership | USER A 改 USER B 的 record → 404 | PASS | admin 建立 record 後，USER `PATCH` 與 `DELETE` 皆回 404 |
 | AUTH-03 | 不可自行升權 | register `role=ADMIN` → 422 | PASS | register 帶 `role=ADMIN` 回 422；不帶 role 回 201、`role=USER`、body 無 `password_hash` |
@@ -81,7 +81,7 @@ docker compose exec api ruff check . && docker compose exec api ruff format --ch
 
 環境：macOS，Podman 5.7 經由 docker CLI 執行 `docker compose`，MariaDB 11.7。所有 PASS 的 commit 是 `2798239`（M05 合併點），日期 2026-11-01（stack 時鐘 2026-10-31 UTC）。Docker Engine 沒有在本機測過。測試數量：後端 339 個（在 api 容器內跑 pytest），前端 11 個（主機上跑 unittest）。
 
-驗收結果：18 個案例完整 PASS，DEP-03 只有 a（全新 volume）PASS、b（既有 volume）NOT RUN，0 個 FAIL，另有 CI-01 尚未執行（GitHub Actions 在 push 之後才會跑，workflow 是 `.github/workflows/ci.yml`）。
+驗收結果：18 個案例完整 PASS，DEP-03 的 a（全新 volume）與 b（既有 volume）都 PASS，0 個 FAIL，另有 CI-01 尚未執行（GitHub Actions 在 push 之後才會跑，workflow 是 `.github/workflows/ci.yml`）。
 
 | ID | 狀態 | 備註 |
 |---|---|---|

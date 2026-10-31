@@ -266,7 +266,7 @@ docker compose exec api ruff check . && docker compose exec api ruff format --ch
 |---|---|---|---|
 | DEP-01 | 一鍵啟動：`docker compose up --build` → ready 200、`/docs`、登入 | ✅ | `up --build -d --wait` exit 0，ready 200、`/docs` 200，三個帳號 `/auth/token` 200；登入走 API，沒有在瀏覽器操作 UI（2798239） |
 | DEP-02 | `down` 後 `up`，資料仍在 | ✅ | `down` 再 `up`，volume 保留，record 137 回 200（2798239） |
-| DEP-03 | 測試庫初始化：全新 volume 有 `traffic_test`，既有 volume 沒有 | ✅ / ⬜ | 全新 volume 通過：`down -v` 後 `up`，`SHOW DATABASES` 有 `traffic_test`；既有 volume 那一半 NOT RUN（2798239） |
+| DEP-03 | 測試庫初始化：全新 volume 有 `traffic_test`，既有 volume 沒有 | ✅ | 全新 volume 通過：`down -v` 後 `up`，`SHOW DATABASES` 有 `traffic_test`；既有 volume 通過：沒掛 `db/init` 初始化的 volume 上 `up` 後仍沒有 `traffic_test`，`down -v` 後才有（f31f41f） |
 | AUTH-01 | VIEWER 不可寫 | ✅ | viewer `POST /records` 403，筆數前後都是 99（2798239） |
 | AUTH-02 | Ownership：USER 改刪他人資料 | ✅ | user `PATCH` 與 `DELETE` 他人的 record 皆 404（2798239） |
 | AUTH-03 | 不可自行升權 | ✅ | register 帶 `role=ADMIN` 422，不帶 role 201 且為 USER（2798239） |
