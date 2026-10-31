@@ -3,12 +3,12 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logging import request_id_var
-from app.models import SystemLog
+from app.models import AuditEvent, SystemLog
 
 
 def record_event(
     session: AsyncSession,
-    event_type: str,
+    event_type: AuditEvent,
     message: str,
     *,
     level: str = "INFO",

@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import NotFoundError, UnprocessableError
 from app.db import flush_or_conflict
-from app.models import RecordSource, Role, TrafficRecord, User, utcnow
+from app.models import AuditEvent, RecordSource, Role, TrafficRecord, User, utcnow
 from app.repositories import api_services, records
 from app.schemas.records import RecordCreate, RecordListQuery, RecordPage, RecordRead, RecordUpdate
 from app.services import audit
@@ -96,7 +96,7 @@ async def update_record(
         record.is_anomaly = after["is_anomaly"] = is_anomaly(record.value, record.threshold_applied)
     audit.record_event(
         session,
-        "record.updated",
+        AuditEvent.RECORD_UPDATED,
         f"record {record.id} updated: {', '.join(before)}",
         actor_id=actor.id,
         target_type="traffic_record",
@@ -112,7 +112,7 @@ async def delete_record(session: AsyncSession, record_id: int, actor: User) -> N
     assert_can_modify(record, actor)
     audit.record_event(
         session,
-        "record.deleted",
+        AuditEvent.RECORD_DELETED,
         f"record {record.id} deleted",
         actor_id=actor.id,
         target_type="traffic_record",

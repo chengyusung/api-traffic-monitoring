@@ -58,6 +58,20 @@ class ImportStatus(StrEnum):
     FAILED = "FAILED"
 
 
+class AuditEvent(StrEnum):
+    """Every system_logs.event_type the application writes; GET /admin/logs filters on these."""
+
+    AUTH_LOGIN = "auth.login"
+    AUTH_REGISTER = "auth.register"
+    RECORD_UPDATED = "record.updated"
+    RECORD_DELETED = "record.deleted"
+    SERVICE_THRESHOLD_UPDATED = "service.threshold_updated"
+    IMPORT_SUCCEEDED = "import.succeeded"
+    IMPORT_FAILED = "import.failed"
+    WRITER_RECOVERED = "writer.recovered"
+    WRITER_FAILED = "writer.failed"
+
+
 class User(Base):
     __tablename__ = "users"
 

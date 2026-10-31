@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.errors import ConflictError, NotFoundError, UnprocessableError
-from app.models import ImportBatch, ImportStatus, RecordSource, Role, User
+from app.models import AuditEvent, ImportBatch, ImportStatus, RecordSource, Role, User
 from app.repositories import api_services
 from app.repositories import records as record_rows
 from app.schemas.imports import RowError
@@ -216,7 +216,7 @@ async def import_file(
         await record_rows.link_import_batch(session, [r.id for r in created], batch.id)
     audit.record_event(
         session,
-        "import.failed" if errors else "import.succeeded",
+        AuditEvent.IMPORT_FAILED if errors else AuditEvent.IMPORT_SUCCEEDED,
         f"import {batch.id} {batch.status}: {batch.success_count}/{batch.total_count} rows",
         level="WARNING" if errors else "INFO",
         actor_id=actor_id,

@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.core.errors import database_unavailable
 from app.db import is_duplicate_key
 from app.ingestion.buffer import IngestionBuffer, IngestionEvent, IngestionStats, WriterState
-from app.models import TrafficRecord, utcnow
+from app.models import AuditEvent, TrafficRecord, utcnow
 from app.services import audit
 
 logger = logging.getLogger(__name__)
@@ -195,7 +195,7 @@ class BatchWriter:
                         exc_info=exc,
                     )
                     await self._audit(
-                        "writer.failed",
+                        AuditEvent.WRITER_FAILED,
                         f"writer stopped: {type(exc).__name__}",
                         level="ERROR",
                         context={"error": type(exc).__name__, "batch_size": len(batch)},
@@ -237,7 +237,7 @@ class BatchWriter:
                 "writer recovered", extra={"failed_attempts": failures, "batch_size": len(batch)}
             )
             await self._audit(
-                "writer.recovered",
+                AuditEvent.WRITER_RECOVERED,
                 f"batch committed after {failures} failed attempts",
                 level="INFO",
                 context={"failed_attempts": failures, "batch_size": len(batch)},
@@ -262,7 +262,7 @@ class BatchWriter:
                 session.add_all(records(await missing_only(session, batch)))
 
     async def _audit(
-        self, event_type: str, message: str, *, level: str, context: dict[str, Any]
+        self, event_type: AuditEvent, message: str, *, level: str, context: dict[str, Any]
     ) -> None:
         """Best effort, in its own session: the database may be the thing that failed."""
         try:

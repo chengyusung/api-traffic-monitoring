@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.errors import UnauthorizedError
 from app.core.security import create_access_token, hash_password, verify_password
 from app.db import flush_or_conflict
-from app.models import Role, User
+from app.models import AuditEvent, Role, User
 from app.repositories import users
 from app.schemas.auth import Email, UserCreate
 from app.services import audit
@@ -23,7 +23,7 @@ async def register(session: AsyncSession, data: UserCreate) -> User:
     await flush_or_conflict(session, "Email is already registered.")
     audit.record_event(
         session,
-        "auth.register",
+        AuditEvent.AUTH_REGISTER,
         "user registered",
         actor_id=user.id,
         target_type="user",
@@ -44,7 +44,7 @@ async def login(session: AsyncSession, username: str, password: str) -> str:
     if user is None or not verified or not user.is_active:
         audit.record_event(
             session,
-            "auth.login",
+            AuditEvent.AUTH_LOGIN,
             "login failed",
             level="WARNING",
             # Only a well-formed address is stored; anything else is attacker-chosen text.
@@ -55,7 +55,7 @@ async def login(session: AsyncSession, username: str, password: str) -> str:
         raise UnauthorizedError("Incorrect email or password.")
     audit.record_event(
         session,
-        "auth.login",
+        AuditEvent.AUTH_LOGIN,
         "login succeeded",
         actor_id=user.id,
         context={"email": email, "result": "success"},

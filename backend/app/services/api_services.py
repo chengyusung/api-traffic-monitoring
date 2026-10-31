@@ -3,7 +3,7 @@ from collections.abc import Sequence
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import NotFoundError
-from app.models import ApiService, User
+from app.models import ApiService, AuditEvent, User
 from app.repositories import api_services
 from app.services import audit
 
@@ -22,7 +22,7 @@ async def update_threshold(
     service.alert_threshold = threshold
     audit.record_event(
         session,
-        "service.threshold_updated",
+        AuditEvent.SERVICE_THRESHOLD_UPDATED,
         f"{service.slug} alert_threshold {before} -> {threshold}",
         actor_id=actor.id,
         target_type="api_service",
