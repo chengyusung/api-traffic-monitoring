@@ -403,9 +403,11 @@ M03 一致採納（3/3）：generator 停止、慢 client、關閉時的 back-of
 
 **CI-01 沒有執行。** workflow 在 `.github/workflows/ci.yml`，只在本機跑過其中的 ruff 命令。
 
-**WS-02 有一個 flake。** 第一次（冷啟動）執行時，`AppTest` 在 10 秒逾時，11 個測試花了 25.9 秒。之後兩次 rerun 在 0.6 到 0.7 秒內通過，另外 20 次 live rerun 也都成立。驗收者把它記為 cold-start flake，沒有重現。README 與 CI 也記下這件事。M05 owner 在主機上第一次跑前端頁面測試時也看過同一個現象（第 5.5 節），兩份紀錄互相呼應，但原因都沒有被證實。
+**WS-02 有一個 flake。** 第一次（冷啟動）執行時，`AppTest` 在 10 秒逾時，11 個測試花了 25.9 秒。之後兩次 rerun 在 0.6 到 0.7 秒內通過，另外 20 次 live rerun 也都成立。驗收者把它記為 cold-start flake，沒有重現。README 也記下這件事，逾時之後已改為 30 秒，冷啟動執行沒有再驗證。M05 owner 在主機上第一次跑前端頁面測試時也看過同一個現象（第 5.5 節），兩份紀錄互相呼應，但原因都沒有被證實。
 
 **DEP-03 只驗了一半。** 舊 volume 缺 `traffic_test` 的那一半沒有跑。
+
+**其他只做到一部分的案例。** AUTH-04 的 token 過期 → 4401 只由單元測試覆蓋，live 只驗了無 token 的 4401 與 `status`。BUF-02 的 live 驗證只看到 5 秒觸發，100 筆觸發由單元測試覆蓋。WS-01 以時間差驗證（WS 事件先收到、DB 約 6.5 秒後才看得到），Writer 沒有被暫停。DEP-01 的登入走 `/auth/token` API，不是瀏覽器 UI。
 
 **ADM-01 的「最後一個 admin」規則沒有在驗收中跑。** API 無法指定另一個 admin 為目標，所以驗收者用自我降級來走這條規則。兩個 admin 的競爭由 integration test 驗證，驗收沒有重跑。
 
@@ -415,7 +417,7 @@ M03 一致採納（3/3）：generator 停止、慢 client、關閉時的 back-of
 
 **沒有人用瀏覽器看過 UI。** 所有前端驗證都用 Streamlit `AppTest`，它不會畫出畫面，也不會觸發 `st.fragment(run_every=1)` 的計時器。這是擁有者的規則，不是疏忽。
 
-**驗收表有 20 列，不是 19 列。** README 的狀態表合併了其中幾列（例如 AUTH-01 到 AUTH-03），所以列數不同。
+**驗收表有 20 列，不是 19 列。** 19 個案例加 CI-01。README 的狀態表與 testing.md 的 ID 一一對應。
 
 **MANUAL 項目。** 這份驗收沒有任何被標成 MANUAL 的列。testing.md 的「手動 / 故障」清單中沒有執行的項目是兩個：`docker compose kill api` 後的遺失邊界展示，以及乾淨 clone 後在瀏覽器以三個帳號走完所有頁面。
 
@@ -457,6 +459,14 @@ M03 一致採納（3/3）：generator 停止、慢 client、關閉時的 back-of
 - **大資料量的行為。** `/admin/system` 與 `/admin/logs` 在百萬列時的表現是推論，沒有量測。M04 的效能數字只到 100k 列。
 - **設計階段花了多久。** 沒有記錄。
 - **兩個 admin 的競爭規則在 live stack 上的行為。** 只有 integration test。
+
+### 8.4 證據的來源與限制
+
+**coordinator 自己的驗證沒有 log 檔。** coordinator 在每個 milestone 合併前的 `compose up`、pytest 與 curl 驗證，只留在 session transcript 與 trail 裡。owner 的執行與驗收有檔案放在 `.audit/` 之下。
+
+**mutation 次數是 owner 自己報的。** review log 與 trail 中的 mutation 次數來自實作的 agent，沒有被獨立重跑。
+
+**row lock 的延後理由是錯的。** 當初以「單 worker」為由延後 row lock，獨立審查指出單 worker 仍會在 `await` 之間交錯：並行 DELETE 可能回 500，稽核的 before 值可能過期。這個限制現在寫在 README 的已知限制。
 
 ## 9. 學到的事
 
