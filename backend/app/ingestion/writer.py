@@ -69,6 +69,20 @@ def to_record(event: IngestionEvent, persisted_at: datetime) -> TrafficRecord:
     )
 
 
+def records(events: list[IngestionEvent]) -> list[TrafficRecord]:
+    persisted_at = utcnow()
+    return [to_record(event, persisted_at) for event in events]
+
+
+async def missing_only(session: AsyncSession, batch: list[IngestionEvent]) -> list[IngestionEvent]:
+    """The events of `batch` whose event_id is not stored yet."""
+    ids = [event.event_id for event in batch]
+    stored = set(
+        await session.scalars(select(TrafficRecord.event_id).where(TrafficRecord.event_id.in_(ids)))
+    )
+    return [event for event in batch if event.event_id not in stored]
+
+
 class BatchWriter:
     """The only consumer of the buffer. It owns its state and the batch it holds."""
 
@@ -222,32 +236,15 @@ class BatchWriter:
 
     async def _commit(self, batch: list[IngestionEvent]) -> None:
         try:
-            await self._insert(batch, skip_existing=False)
+            async with self._session_factory() as session, session.begin():
+                session.add_all(records(batch))
         except IntegrityError as exc:
             if not is_duplicate_key(exc):
                 raise
             # An earlier commit may have landed with its ack lost: rows already there count
             # as persisted, so insert only the rest.
-            await self._insert(batch, skip_existing=True)
-
-    async def _insert(self, batch: list[IngestionEvent], *, skip_existing: bool) -> None:
-        async with self._session_factory() as session:
-            try:
-                pending = batch
-                if skip_existing:
-                    ids = [event.event_id for event in batch]
-                    existing = set(
-                        await session.scalars(
-                            select(TrafficRecord.event_id).where(TrafficRecord.event_id.in_(ids))
-                        )
-                    )
-                    pending = [event for event in batch if event.event_id not in existing]
-                persisted_at = utcnow()
-                session.add_all(to_record(event, persisted_at) for event in pending)
-                await session.commit()
-            except Exception:
-                await session.rollback()
-                raise
+            async with self._session_factory() as session, session.begin():
+                session.add_all(records(await missing_only(session, batch)))
 
     async def _audit(
         self, event_type: str, message: str, *, level: str, context: dict[str, Any]

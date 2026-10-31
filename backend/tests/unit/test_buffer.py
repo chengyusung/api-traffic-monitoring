@@ -80,6 +80,15 @@ class FakeSession:
     async def __aexit__(self, *exc_info: object) -> None:
         return None
 
+    @asynccontextmanager
+    async def begin(self) -> AsyncIterator[None]:
+        try:
+            yield
+        except BaseException:
+            await self.rollback()
+            raise
+        await self.commit()
+
     def add_all(self, rows: Iterable[TrafficRecord]) -> None:
         self.rows.extend(rows)
 
