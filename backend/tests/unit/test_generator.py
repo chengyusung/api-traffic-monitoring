@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from app.ingestion.buffer import IngestionBuffer
+from app.ingestion.buffer import IngestionBuffer, WriterState
 from app.realtime.generator import Generator, ServiceSnapshot, sample
 
 SERVICES = (
@@ -40,6 +40,7 @@ def generator(buffer: IngestionBuffer, recorder: Recorder, seed: int = 42) -> Ge
         buffer,
         recorder,
         None,  # type: ignore[arg-type]
+        writer_state=lambda: WriterState.IDLE,
         seed=seed,
         interval_s=1,
         reload_interval_s=5,
@@ -108,3 +109,34 @@ async def test_an_event_is_broadcast_only_after_the_buffer_accepts_it() -> None:
     buffer.release(1)
     await ticking
     assert len(recorder.messages) == 3
+
+
+@pytest.mark.parametrize("halted", [WriterState.UNAVAILABLE, WriterState.STOPPED])
+async def test_the_generator_stops_within_one_tick_once_the_writer_halts(
+    halted: WriterState,
+) -> None:
+    writer_state, recorder, ticks = WriterState.IDLE, Recorder(), 0
+
+    async def interval(seconds: float) -> None:
+        nonlocal writer_state, ticks
+        ticks += 1
+        writer_state = halted  # the writer fails during the first interval
+        assert ticks == 1, "the generator kept ticking after the writer halted"
+
+    gen = Generator(
+        IngestionBuffer(10),
+        recorder,
+        None,  # type: ignore[arg-type]
+        writer_state=lambda: writer_state,
+        seed=42,
+        interval_s=1,
+        reload_interval_s=5,
+        sleep=interval,
+    )
+    gen.services = SERVICES
+
+    async with asyncio.timeout(5):
+        await gen.run()
+
+    assert len(recorder.messages) == 3, "one tick, then nothing"
+    assert gen.stopped_by is halted

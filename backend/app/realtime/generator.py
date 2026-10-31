@@ -13,7 +13,7 @@ from typing import Protocol
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.ingestion.buffer import IngestionBuffer, IngestionEvent
+from app.ingestion.buffer import IngestionBuffer, IngestionEvent, WriterState
 from app.models import RecordSource, utcnow
 from app.repositories import api_services
 from app.schemas.realtime import TrafficObserved
@@ -57,6 +57,7 @@ class Generator:
         broadcaster: Broadcaster,
         session_factory: async_sessionmaker[AsyncSession],
         *,
+        writer_state: Callable[[], WriterState],
         seed: int,
         interval_s: float,
         reload_interval_s: float,
@@ -66,6 +67,7 @@ class Generator:
         self._buffer = buffer
         self._broadcaster = broadcaster
         self._session_factory = session_factory
+        self._writer_state = writer_state
         self._rng = random.Random(seed)
         self._interval_s = interval_s
         self._reload_interval_s = reload_interval_s
@@ -76,6 +78,7 @@ class Generator:
         self.thresholds_loaded_at: datetime | None = None
         self.db_ok = False
         self.paused_s = 0.0
+        self.stopped_by: WriterState | None = None
 
     async def reload_thresholds(self) -> None:
         """Replace the map from api_services; on failure keep the last good one."""
@@ -137,6 +140,11 @@ class Generator:
     async def run(self) -> None:
         next_tick = self._clock()
         while True:
+            # ADR-001: a halted writer stops the simulator; its events could only be dropped.
+            if (writer_state := self._writer_state()).halted:
+                self.stopped_by = writer_state
+                logger.error("generator stopped", extra={"writer_state": writer_state.value})
+                return
             await self.tick()
             next_tick += self._interval_s
             now = self._clock()

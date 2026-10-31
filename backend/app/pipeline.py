@@ -31,8 +31,7 @@ def evaluate(
 ) -> HealthState:
     """architecture.md §9. `retrying` holds from a batch's first failure until its commit;
     `stalled` means no commit for two flush intervals, whatever the writer's state says."""
-    writer_stopped = writer_state in (WriterState.UNAVAILABLE, WriterState.STOPPED)
-    if not ready or writer_stopped or (buffer_full and (retrying or stalled)):
+    if not ready or writer_state.halted or (buffer_full and (retrying or stalled)):
         return HealthState.UNAVAILABLE
     if not db_ok or retrying:
         return HealthState.DEGRADED
@@ -65,21 +64,23 @@ class Pipeline:
             max_connections=settings.ws_max_connections,
             queue_size=settings.ws_per_connection_queue,
         )
+        writer = BatchWriter(
+            buffer,
+            session_factory,
+            batch_max_size=settings.batch_max_size,
+            flush_interval_s=settings.flush_interval_seconds,
+            retry_initial_s=settings.retry_initial_backoff_seconds,
+            retry_max_s=settings.retry_max_backoff_seconds,
+            commit_timeout_s=settings.commit_timeout_seconds,
+        )
         return cls(
             buffer=buffer,
-            writer=BatchWriter(
-                buffer,
-                session_factory,
-                batch_max_size=settings.batch_max_size,
-                flush_interval_s=settings.flush_interval_seconds,
-                retry_initial_s=settings.retry_initial_backoff_seconds,
-                retry_max_s=settings.retry_max_backoff_seconds,
-                commit_timeout_s=settings.commit_timeout_seconds,
-            ),
+            writer=writer,
             generator=Generator(
                 buffer,
                 manager,
                 session_factory,
+                writer_state=lambda: writer.state,
                 seed=settings.simulator_seed,
                 interval_s=settings.simulator_interval_seconds,
                 reload_interval_s=settings.threshold_reload_seconds,

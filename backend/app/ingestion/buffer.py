@@ -33,6 +33,11 @@ class WriterState(StrEnum):
     UNAVAILABLE = "UNAVAILABLE"
     STOPPED = "STOPPED"
 
+    @property
+    def halted(self) -> bool:
+        """Nothing more gets persisted until the process restarts."""
+        return self in (WriterState.UNAVAILABLE, WriterState.STOPPED)
+
 
 @dataclass(frozen=True, slots=True)
 class IngestionStats:
