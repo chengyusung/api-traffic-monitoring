@@ -19,14 +19,7 @@ def is_anomaly(value: int, threshold: int) -> bool:
 
 def assert_can_modify(record: TrafficRecord, user: User) -> None:
     """Raise NotFoundError, not 403, so a refusal never confirms that the record exists."""
-    match user.role:
-        case Role.ADMIN:
-            allowed = True
-        case Role.USER:
-            allowed = record.created_by is not None and record.created_by == user.id
-        case Role.VIEWER:
-            allowed = False
-    if not allowed:
+    if not (user.role == Role.ADMIN or (user.role == Role.USER and record.created_by == user.id)):
         raise NotFoundError(NOT_FOUND)
 
 
