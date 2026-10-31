@@ -187,7 +187,7 @@ CSV 欄位：`event_id,service_slug,title,value,observed_at`；JSON 為同欄位
 
 **Admin 使用者**：`GET /admin/users` 用同一組 `page`、`page_size`，依 id 排序。`PATCH /admin/users/{id}` 只接受 `role` 與 `is_active`。帶 `email` 回 422 `email cannot be changed`；空 body、null、其他欄位也是 422。違反 ADR-002 管理規則時回 422 並寫明原因：停用或降級自己是 `You cannot deactivate or demote yourself.`，停用或降級最後一個有效 ADMIN 是 `The last active ADMIN cannot be deactivated or demoted.`。沒有刪除，`DELETE` 回 405。變更與 `user.updated` 稽核（actor、target、before / after）在同一個 transaction；沒有實際變更時不寫稽核。
 
-在 API 上，最後一個有效 ADMIN 只可能是操作者自己，所以第二條規則擋的是並行：兩個 ADMIN 同時互相降級。service 先結束認證讀取的那個 transaction，再以 `SELECT … FOR UPDATE` 依固定順序鎖住所有有效 ADMIN 列與目標列。後到的 request 會等前一個 commit，再看到它的結果。先結束 transaction 的原因：MariaDB 11.7 預設 `innodb_snapshot_isolation=ON`，鎖定讀取遇到 snapshot 建立後被改過的列會回 1020。
+在 API 上，最後一個有效 ADMIN 只可能是操作者自己，所以第二條規則擋的是並行：兩個 ADMIN 同時互相降級。service 先結束認證讀取的那個 transaction，再以 `SELECT … FOR UPDATE` 依固定順序鎖住所有有效 ADMIN 列與目標列。鎖定後，操作者必須仍在有效 ADMIN 之中，否則回 403 `FORBIDDEN`：認證讀到的角色可能在這段時間被別的 ADMIN 改掉。後到的 request 會等前一個 commit，再看到自己已被降級而回 403；所以「最後一個有效 ADMIN」實際上由這個檢查加上「不能動自己」保證，第二條規則的程式保留為 ADR-002 的明文規則。沒有實際變更時，service 先 rollback 釋放鎖再回覆。先結束 transaction 的原因：MariaDB 11.7 預設 `innodb_snapshot_isolation=ON`，鎖定讀取遇到 snapshot 建立後被改過的列會回 1020。
 
 **Admin 日誌**：`GET /admin/logs` 接受 `level`（INFO / WARNING / ERROR）、`event_type`、`start`、`end`（`start <= created_at < end`）與標準分頁，依 `created_at` 新到舊，`id` 為次排序。`event_type` 只接受 `GET /admin/logs/event-types` 列出的值（§10），其他值回 422。
 

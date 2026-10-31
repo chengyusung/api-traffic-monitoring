@@ -8,7 +8,7 @@ from pydantic_core import to_jsonable_python
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.errors import NotFoundError, UnprocessableError
+from app.core.errors import ForbiddenError, NotFoundError, UnprocessableError
 from app.models import AuditEvent, Role, User
 from app.pipeline import Pipeline
 from app.repositories import system, users
@@ -45,12 +45,17 @@ async def update_user(
     session: AsyncSession, user_id: int, changes: UserUpdate, actor: User
 ) -> User:
     """Change role and / or is_active. Refuses to leave the actor or the system without an
-    active ADMIN; the audit row commits with the change."""
+    active ADMIN; the audit row commits with the change. The session must hold no unsaved
+    change: the first commit below would write it."""
+    assert not (session.new or session.dirty or session.deleted), "pending changes in session"
     # End the transaction that authenticated the actor: MariaDB 11.7 rejects a locking read
     # of a row changed after that transaction's snapshot (1020, innodb_snapshot_isolation).
     await session.commit()
     # Lock first, in one order for every caller, so concurrent changes cannot deadlock.
     active_admins = await users.lock_active_admin_ids(session)
+    # Authentication read the actor before the locks; another admin may have demoted them since.
+    if actor.id not in active_admins:
+        raise ForbiddenError("Only an active ADMIN can change users.")
     target = await users.get_for_update(session, user_id)
     if target is None:
         raise NotFoundError("User not found.")
@@ -60,6 +65,9 @@ async def update_user(
         if getattr(target, name) != value
     }
     if not after:
+        # Release the row locks now, not when the request's session closes.
+        await session.rollback()
+        await session.refresh(target)
         return target
     stays_admin = after.get("role", target.role) == Role.ADMIN and after.get(
         "is_active", target.is_active
