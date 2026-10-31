@@ -1,3 +1,5 @@
+import json
+
 import pytest
 from pydantic import SecretStr, ValidationError
 from sqlalchemy import select
@@ -20,6 +22,7 @@ from app.models import (
     TrafficRecord,
     User,
 )
+from app.services.imports import import_file
 
 SECRET = SecretStr("bootstrap-pass-1")
 
@@ -122,7 +125,7 @@ async def test_seed_demo_is_idempotent_by_email(
         }
 
 
-async def test_seed_demo_records_imports_the_sample_once_as_the_demo_user(
+async def test_seed_demo_records_imports_the_json_sample_once_as_the_demo_user(
     session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
     async with session_factory() as session:
@@ -145,7 +148,26 @@ async def test_seed_demo_records_imports_the_sample_once_as_the_demo_user(
             ).all()
         )
     assert [(b.id, b.filename, b.status) for b in batches] == [
-        (batch_id, "seed:sample_traffic.csv", ImportStatus.SUCCEEDED)
+        (batch_id, "seed:sample_traffic.json", ImportStatus.SUCCEEDED)
     ]
-    assert batches[0].success_count == len(DEMO_RECORDS.read_text().splitlines()) - 1
+    assert batches[0].success_count == len(json.loads(DEMO_RECORDS.read_text()))
     assert owners == {(RecordSource.IMPORT, "user@example.com")}
+
+
+async def test_the_sample_csv_still_imports_on_a_seeded_database(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    csv = DEMO_RECORDS.with_name("sample_traffic.csv")
+    async with session_factory() as session:
+        await ensure_services(session)
+        await seed_demo(session, [(Role.USER, "user@example.com", SECRET)])
+        await seed_demo_records(session, "user@example.com")
+        user = await session.scalar(select(User).where(User.email == "user@example.com"))
+        assert user is not None
+
+        batch = await import_file(session, csv.name, csv.read_bytes(), user)
+
+    assert (batch.status, batch.success_count) == (
+        ImportStatus.SUCCEEDED,
+        len(csv.read_text().splitlines()) - 1,
+    )

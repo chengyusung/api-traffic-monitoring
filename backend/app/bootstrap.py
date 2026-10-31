@@ -21,8 +21,9 @@ logger = logging.getLogger("app.bootstrap")
 
 # architecture.md §5: slug, display name, initial alert_threshold.
 SERVICES = (("auth", "Auth API", 80), ("orders", "Orders API", 150), ("payment", "Payment API", 80))
-# The repository's data/; docker-compose.yml mounts it at the same relative place.
-DEMO_RECORDS = Path(__file__).resolve().parents[2] / "data" / "sample_traffic.csv"
+# The repository's data/; docker-compose.yml mounts it at the same relative place. The JSON
+# sample, so the CSV sample (no event_id in common) still imports on a seeded stack.
+DEMO_RECORDS = Path(__file__).resolve().parents[2] / "data" / "sample_traffic.json"
 
 
 async def ensure_services(session: AsyncSession) -> list[str]:
@@ -85,7 +86,8 @@ async def seed_demo(
 
 
 async def seed_demo_records(session: AsyncSession, user_email: str | None) -> int | None:
-    """Import the sample CSV as the demo USER unless any IMPORT row exists; returns the batch id."""
+    """Import the sample JSON as the demo USER unless any IMPORT row exists; returns the batch
+    id."""
     imported = select(TrafficRecord.id).where(TrafficRecord.source == RecordSource.IMPORT)
     if await session.scalar(imported.limit(1)) is not None:
         return None
