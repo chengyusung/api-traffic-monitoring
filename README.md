@@ -74,9 +74,12 @@ flowchart LR
 
 ```bash
 git clone <repo-url> && cd api-traffic-monitoring
-cp .env.example .env            # 至少修改 JWT_SECRET_KEY（openssl rand -hex 32）與密碼
+cp .env.example .env
+python3 -c "import re,secrets;s=open('.env').read();open('.env','w').write(re.sub(r'(?m)^JWT_SECRET_KEY=.*',lambda m:'JWT_SECRET_KEY='+secrets.token_hex(32),s))"
 docker compose up --build
 ```
+
+第二行指令把 `.env` 裡的 `JWT_SECRET_KEY` 換成新產生的 64 位十六進位字串，macOS 與 Linux 都能用。這一步不能省，因為 `JWT_SECRET_KEY` 含 `change-me` 時 api 會拒絕啟動（`backend/app/core/config.py`），避免有人帶著公開的範例密鑰上線。資料庫密碼的預設值僅供本機 demo，要對外時請一併修改。
 
 | 服務 | URL |
 |---|---|
