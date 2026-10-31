@@ -94,7 +94,7 @@
   3. ADR-003 同時規定 `deque(maxlen=300)` 與「近 120 秒」：每秒 3 筆，120 秒是 360 筆，超過 300。deque 只當 thread 與 script 之間的傳遞緩衝；頁面在 script thread 以 `event_id` 去重，另存一個依 `observed_at` 只留 120 秒的視窗。沒有資料的秒數不補值。
   4. uvicorn 沒有安裝 WebSocket 實作就無法處理 upgrade。backend 加入 `websockets==17.4`，與 frontend lock 同版。
   5. 文件沒寫的情況：handshake 時 DB 不可用。決定以 close `1013`（Try Again Later）拒絕，與連線數超過上限相同；不吞例外，也不當成 4401。
-  6. Writer 永久錯誤時，Generator 不會立刻停止，而是在 buffer 滿（約 333 秒）時被 backpressure 擋住。這段期間推送的事件已被接受但不會寫入，readiness 與 `status` 訊息同時是 UNAVAILABLE。ADR-001 的「連帶停止 Generator」目前靠容量上限達成。
+  6. 第一版：Writer 永久錯誤時，Generator 不會立刻停止，而是在 buffer 滿（約 333 秒）時被 backpressure 擋住；這段期間推送的事件已被接受但不會寫入。M03 fix round 已修正（commit `64a3742`）：Generator 每個 tick 檢查 writer 狀態，writer 進入 UNAVAILABLE 或 STOPPED 後一個 tick 內停止，停止原因記在 `Generator.stopped_by` 並寫一筆 ERROR log。測試讓假的 writer 狀態在第一個 interval 內變成 UNAVAILABLE / STOPPED，預期只產生一個 tick（3 則）；拿掉檢查、或 STOPPED 不算停止，兩個 mutation 都會被抓到。
 - 驗證（Podman、`docker compose`、MariaDB 11.7）：
   - `docker compose exec -T api pytest -q` exit 0，200 passed、0 skipped。新增 37 個：`test_buffer.py` 11、`test_generator.py` 8、`test_writer.py` 3（真實 MariaDB）、`test_ws.py` 6、`test_health.py` 由 3 個改為 12 個。
   - `ruff check`、`ruff format --check` 在 api 容器內與 CI 的 `uvx ruff@0.17.3 ... backend frontend` 皆 exit 0。
@@ -104,3 +104,24 @@
   - `docker compose stop api`：log 依序為 `Waiting for application shutdown.` → `ingestion stopped {"abandoned_events": 0}` → `Application shutdown complete.`。
   - Streamlit（frontend 容器內 `AppTest`，連真實 api）：錯誤密碼顯示對應訊息；登入後 Live 頁顯示連線狀態、最後事件時間、系統狀態、各 Service 最新值、「即時（尚未持久化）」標示與 2 張圖；連續 rerun 20 次，api 的 `active_connections` 每次都是 1；壞 token 收到 4401 後，receiver thread 結束、token 清除、Login 頁顯示過期提示；登出後 token 與 receiver 都清除，thread 數為 0。`docker compose restart frontend` 後 log 無 traceback。
   - 未驗證：`st.fragment(run_every=1)` 在瀏覽器中每秒自動刷新（`AppTest` 只會同步執行 fragment，不會觸發計時器），以及圖表的實際外觀；兩者留給瀏覽器人工檢查。GitHub Actions：NOT RUN。
+
+### R-007 M04 Data
+
+- 任務：M04。`POST /imports`（multipart，CSV / JSON，All-or-Nothing）與 `GET /imports/{id}`；`/analytics/summary`、`/categories`、`/trends`、`/export`（openpyxl）；`SEED_DEMO_DATA=true` 時以 demo USER 匯入 `data/sample_traffic.csv`；Streamlit Records 頁與 Analytics 頁。
+- AI 產出：匯入解析是純函式 `parse()`，每列交給 `RecordCreate` 驗證，再檢查 Service 與檔內重複的 `event_id`；資料寫入重用 `records.create_records()`（新增 `source` 參數），batch 與稽核放在下一個 transaction。錯誤格式加上選用的 `details`。Analytics 與列表共用 `filter_conditions()`；trend 用 `CAST(DATE_FORMAT(observed_at, …) AS DATETIME(6))` 分桶；export 以 server-side cursor 分批讀取，在 thread 裡寫 write-only workbook。
+- 審查：對 compose 的 MariaDB 跑全部測試；13 個 mutation；100k 列計時；三個 demo 帳號的 Streamlit `AppTest`；以 curl 走一遍驗收步驟；逐條比對 architecture.md §5.3、§6、§7 與 ADR-002。
+- 發現與修正：
+  1. `tests/unit/test_analytics.py` 與 `tests/api/test_analytics.py` 同名，pytest 預設的 import mode 收集時報 `import file mismatch`。`pyproject.toml` 改用 `--import-mode=importlib`。commit `b0b1825`。
+  2. `data/` 在 backend 的 build context 之外。第一版把它掛到 api 容器的 `/app/data`，程式用 `parents[1]` 找檔案；容器內可行，但 README「本地運行（不用 Docker）」從 `backend/` 執行時找不到。改成掛在 `/data`、程式用 `parents[2]`，容器與本機都指向 repo 的 `data/`。commit `9ffd36d`。
+  3. 規格缺口：`data/sample_traffic.csv` 有 3 列固定 `event_id`。seed 匯入之後，同一個檔案再匯入一定是整批 409，這符合 §5.3。所以「curl 匯入 `data/sample_traffic.csv` 得到 201」在已 seed 的環境不會成立。規則沒有改；改用 seed 的 batch（`GET /imports/1` 為 SUCCEEDED 15/15）證明同一個檔案經同一個流程匯入成功，再用清空 `event_id` 欄的副本實測 201。
+  4. 文件沒寫、自行決定並補進 architecture.md §5.3 / §6 / §7 的部分：行號（CSV 用檔案行號、標頭為第 1 行；JSON 用陣列位置）；`failure_count` 是有錯的列數；`details` 與 `errors` 最多 100 筆；`GET /imports/{id}` 只給上傳者與 ADMIN，其他人 404；`import_batch_id` 在寫 batch 的 transaction 裡補上；trends 超過 10,080 個 bucket 回 422。
+  5. Mutation「忽略列錯誤、只寫有效的列」有被抓到，但抓到的是 `import_batches` 的 CHECK（`success_count` 只能是 0 或 total，MariaDB 4025）：14 列已 commit，之後 batch insert 才失敗。資料 transaction 本身沒有第二道防線，全靠先驗證全部列。
+  6. 第一版的兩個測試輸入寫錯：檔內重複的測試把整列轉大寫，連 service 也變成 `PAYMENT`；IMP-01 改錯了行的值。第一次執行就失敗，修的是測試輸入，不是程式。
+- 驗證（Podman、`docker compose`、MariaDB 11.7）：
+  - `docker compose up --build -d` exit 0；`docker compose exec -T api pytest -q` exit 0，291 passed（原本 242）。新增 49 個：`test_import_parser.py` 30、`unit/test_analytics.py` 2、`test_import_all_or_nothing.py` 3、`api/test_imports.py` 5、`api/test_analytics.py` 8、`test_bootstrap.py` 1。api 容器內 `ruff check .`、`ruff format --check .` 皆 exit 0；`uvx ruff@0.17.3 check / format --check backend frontend` 皆 exit 0。
+  - 以 user@example.com 執行 curl：`GET /imports/1`（seed）為 SUCCEEDED 15/15；原檔 409 `CONFLICT`，`details` 列出第 14、15、16 行；清空 `event_id` 的副本 201 SUCCEEDED 15/15；第 8 行 value 改成 -55 的副本 422，`details` 為 `row 8 value`，IMPORT 筆數前後都是 30。
+  - `GET /analytics/summary?service=payment` 的 count、`GET /records?service=payment&page_size=1` 的 total、`/analytics/export?service=payment` 的 xlsx 列數皆為 585；加上固定 `end` 後三者皆為 530。VIEWER：`POST /imports` 403，`GET /analytics/summary` 200。
+  - Mutation 13 / 13 被抓到：部分匯入、失敗時不寫 batch、沒有 DB 衝突預檢、沒有檔內重複檢查、CSV value 接受 `5.0`、`end` 改成含端點、空集合 sum 補 0、anomaly 數成全部、hour 用 minute 格式、export 忽略 filter、export 沒有上限、任何人都能讀別人的 batch、seed 不檢查既有資料。
+  - 100k 列（traffic_test，測完清空）：summary 0.01 秒、categories 0.04 秒、minute trend 0.04 秒（556 個 bucket）；export 33,333 列 1.56 秒、2.39 MB；100k 列 export 回 422。約 50k 列 export 期間，10 ms ticker 量到的 event loop 最長停頓是 57 ms。
+  - Streamlit `AppTest`（frontend 容器內，連真實 api）：三個帳號開兩個新頁面都沒有 exception。VIEWER 看不到新增、編輯、匯入；USER 新增後可以編輯自己的那一列。把 session 的角色假改成 ADMIN 去刪別人的資料，畫面顯示後端的 `Record not found.`。Excel 下載按鈕出現。`docker compose logs frontend` 沒有 traceback。
+  - 未驗證：瀏覽器中的實際外觀與 file uploader 操作（`AppTest` 無法操作上傳元件；上傳走的 `lib/api.import_file` 已在 frontend 容器內直接呼叫確認，422 的 `details` 有正確解析）。GitHub Actions：NOT RUN。

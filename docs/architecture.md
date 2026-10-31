@@ -152,6 +152,12 @@ CSV / JSON 採 All-or-Nothing：先驗證所有列（欄位、Service slug、tim
 
 CSV 欄位：`event_id,service_slug,title,value,observed_at`；JSON 為同欄位的物件陣列。範例見 `data/sample_traffic.csv`、`data/sample_traffic.json`。
 
+- 行號：CSV 是檔案行號（標頭為第 1 行），JSON 是陣列中的第幾個（從 1 起算）；整個檔案的問題（大小、副檔名、編碼、標頭、列數）行號為 null。
+- 驗證失敗回 422 `VALIDATION_ERROR`，DB 已有 `event_id` 回 409 `CONFLICT`；兩者都在錯誤格式的 `details` 列出 `{row, field, message}`（最多 100 筆）。
+- `import_batches`：`failure_count` 是有錯誤的列數，`errors` 存同樣的清單。匯入的列 `source=IMPORT`、`created_by` 為上傳者，`import_batch_id` 在寫 batch 的 transaction 裡補上。
+- `GET /imports/{id}` 只有上傳者與 ADMIN 看得到，其他人一律 404。
+- `SEED_DEMO_DATA=true` 且沒有任何 `source=IMPORT` 的列時，啟動步驟以 demo USER 透過同一個匯入流程載入 `data/sample_traffic.csv`（filename `seed:sample_traffic.csv`）。compose 把 `data/` 掛在 api 容器的 `/data`。
+
 ## 6. API Contract
 
 所有業務路徑前綴 `/api/v1`。Swagger UI：`/docs`；OpenAPI JSON：`/openapi.json`。
@@ -194,6 +200,8 @@ CSV 欄位：`event_id,service_slug,title,value,observed_at`；JSON 為同欄位
 | 422 | `VALIDATION_ERROR`（含欄位路徑；匯入含行號） |
 | 503 | `SERVICE_UNAVAILABLE`（DB 不可用、Writer 停止） |
 
+匯入被拒時 `error` 另有 `details`（逐列錯誤，見 §5.3）；其他錯誤沒有這個欄位。
+
 每個 request 帶 `X-Request-ID`（沒有就產生），回覆原樣帶回，application log 與 `system_logs` 一併記錄。DB exception 訊息、密碼、token 不出現在任何 response。
 
 ## 7. Analytics 與 Streamlit
@@ -206,6 +214,8 @@ Analytics 一律在 DB 聚合（`select(func.count(), func.sum(), func.avg(), fu
 - `export`：套用相同 filter 的明細 Excel（openpyxl），上限 50,000 列，超過回 422 要求縮小範圍。
 
 單一 Service 的 `avg(value)` 是已觀測一秒樣本的平均 RPS。混合多個 Service 的 avg 是「每筆 Service-second 觀測的平均」，UI 以此標示，不標成整體 RPS。
+
+回覆欄位：`count`、`sum`、`avg_per_observation`、`min`、`max`、`anomaly_count`；沒有資料時 sum / avg / min / max 為 null，不是 0。`trends` 每點另有 `bucket_start`（UTC），超過 10,080 個 bucket 回 422。`export` 依 `-observed_at` 排序；Excel 不存時區，時間欄以 UTC 寫入、欄名加 `_utc`。筆數檢查與明細在同一個 transaction 讀取。
 
 | Streamlit 頁面 | 內容 |
 |---|---|
