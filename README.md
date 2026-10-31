@@ -99,7 +99,7 @@ docker compose down -v                     # 停止並刪除資料 volume
 
 ## 測試帳號
 
-`SEED_DEMO_DATA=true` 時建立。密碼來自 `.env`；以下是 `.env.example` 預設值，僅供本機 demo。
+`SEED_DEMO_DATA=true` 時建立，並以 USER 匯入 `data/sample_traffic.json` 當範例資料。密碼來自 `.env`；以下是 `.env.example` 預設值，僅供本機 demo。
 
 | 角色 | Email | 密碼 | 能做什麼 |
 |---|---|---|---|
@@ -154,7 +154,7 @@ curl -s "localhost:8000/api/v1/analytics/summary?service=payment" -H "Authorizat
 | 角色與權限（Admin / User / Viewer） | `require_roles` dependency + service 層 Ownership；矩陣見 ADR-002 |
 | 資料 CRUD，分頁 / 篩選 / 排序 | `/records`（`page`、`page_size`、`sort`、`service`、`source`、`is_anomaly`、`start`、`end`、`q`）；Records 頁 |
 | 更新 / 刪除僅限創建者或 Admin | 以 DB `created_by` 判斷；Simulator 資料（`created_by = NULL`）只有 Admin 可動 |
-| 批量導入 CSV / JSON | `POST /imports`，All-or-Nothing；範例 [`data/sample_traffic.csv`](data/sample_traffic.csv)、[`data/sample_traffic.json`](data/sample_traffic.json) |
+| 批量導入 CSV / JSON | `POST /imports`，All-or-Nothing；範例 [`data/sample_traffic.csv`](data/sample_traffic.csv)、[`data/sample_traffic.json`](data/sample_traffic.json)。seed 匯入 JSON，CSV 留給手動匯入 |
 | 每秒隨機資料生成器 | `backend/app/realtime/generator.py`：三個 Service、固定 seed、可重現 spike |
 | WebSocket 即時推送 | `WS /api/v1/ws/traffic`，Real-time First（ADR-003） |
 | 即時折線圖 / 柱狀圖 | Live Monitor 頁，背景 receiver + `st.fragment(run_every=1)` |

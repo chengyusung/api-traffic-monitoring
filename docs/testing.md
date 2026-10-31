@@ -34,7 +34,7 @@ docker compose exec api ruff check . && docker compose exec api ruff format --ch
 - USER A 改刪 USER B 的 record → 404；改刪 `created_by=NULL` → 404。
 - request 帶 `source` / `created_by` / `is_anomaly` → 422。
 - ADMIN 改 threshold / 改角色 → 200 且 `system_logs` 有紀錄。
-- Admin 停用自己 / 停用最後一個 ADMIN → 422。
+- Admin 停用自己 / 停用最後一個 ADMIN → 422。API 上最後一個有效 ADMIN 只會是操作者自己，由「停用自己」擋下；「最後一個 ADMIN」規則在兩個 ADMIN 並行互相降級時生效，用 integration test 直接呼叫 service 驗證。
 - 分頁 total 正確、排序穩定、`page_size=101` → 422。
 - 所有成功 response 不含 `password_hash`。
 - WebSocket 無 token → close 4401；有效 token → 收到 `status` 訊息。

@@ -156,7 +156,7 @@ CSV 欄位：`event_id,service_slug,title,value,observed_at`；JSON 為同欄位
 - 驗證失敗回 422 `VALIDATION_ERROR`，DB 已有 `event_id` 回 409 `CONFLICT`；兩者都在錯誤格式的 `details` 列出 `{row, field, message}`（最多 100 筆）。
 - `import_batches`：`failure_count` 是有錯誤的列數，`errors` 存同樣的清單。匯入的列 `source=IMPORT`、`created_by` 為上傳者，`import_batch_id` 在寫 batch 的 transaction 裡補上。
 - `GET /imports/{id}` 只有上傳者與 ADMIN 看得到，其他人一律 404。
-- `SEED_DEMO_DATA=true` 且沒有任何 `source=IMPORT` 的列時，啟動步驟以 demo USER 透過同一個匯入流程載入 `data/sample_traffic.csv`（filename `seed:sample_traffic.csv`）。compose 把 `data/` 掛在 api 容器的 `/data`。
+- `SEED_DEMO_DATA=true` 且沒有任何 `source=IMPORT` 的列時，啟動步驟以 demo USER 透過同一個匯入流程載入 `data/sample_traffic.json`（filename `seed:sample_traffic.json`）。兩個範例檔的固定 `event_id` 不重疊，所以 seed 之後手動匯入 `data/sample_traffic.csv` 仍會成功。compose 把 `data/` 掛在 api 容器的 `/data`。
 
 ## 6. API Contract
 
@@ -173,7 +173,7 @@ CSV 欄位：`event_id,service_slug,title,value,observed_at`；JSON 為同欄位
 | Services | `PATCH /services/{id}` | ADMIN |
 | Analytics | `GET /analytics/summary`、`/categories`、`/trends`、`/export` | 全角色 |
 | Admin | `GET /admin/users`、`PATCH /admin/users/{id}` | ADMIN |
-| Admin | `GET /admin/logs`、`GET /admin/system` | ADMIN |
+| Admin | `GET /admin/logs`、`GET /admin/logs/event-types`、`GET /admin/system` | ADMIN |
 | Health | `GET /health/live`、`GET /health/ready` | 公開 |
 | Realtime | `WS /api/v1/ws/traffic` | 全角色（JWT） |
 
@@ -184,6 +184,12 @@ CSV 欄位：`event_id,service_slug,title,value,observed_at`；JSON 為同欄位
 ```
 
 **Bulk**：`POST /records/bulk` 最多 1,000 筆，超過回 422。
+
+**Admin 使用者**：`GET /admin/users` 用同一組 `page`、`page_size`，依 id 排序。`PATCH /admin/users/{id}` 只接受 `role` 與 `is_active`。帶 `email` 回 422 `email cannot be changed`；空 body、null、其他欄位也是 422。違反 ADR-002 管理規則時回 422 並寫明原因：停用或降級自己是 `You cannot deactivate or demote yourself.`，停用或降級最後一個有效 ADMIN 是 `The last active ADMIN cannot be deactivated or demoted.`。沒有刪除，`DELETE` 回 405。變更與 `user.updated` 稽核（actor、target、before / after）在同一個 transaction；沒有實際變更時不寫稽核。
+
+在 API 上，最後一個有效 ADMIN 只可能是操作者自己，所以第二條規則擋的是並行：兩個 ADMIN 同時互相降級。service 先結束認證讀取的那個 transaction，再以 `SELECT … FOR UPDATE` 依固定順序鎖住所有有效 ADMIN 列與目標列。後到的 request 會等前一個 commit，再看到它的結果。先結束 transaction 的原因：MariaDB 11.7 預設 `innodb_snapshot_isolation=ON`，鎖定讀取遇到 snapshot 建立後被改過的列會回 1020。
+
+**Admin 日誌**：`GET /admin/logs` 接受 `level`（INFO / WARNING / ERROR）、`event_type`、`start`、`end`（`start <= created_at < end`）與標準分頁，依 `created_at` 新到舊，`id` 為次排序。`event_type` 只接受 `GET /admin/logs/event-types` 列出的值（§10），其他值回 422。
 
 **錯誤格式**：
 
@@ -198,9 +204,11 @@ CSV 欄位：`event_id,service_slug,title,value,observed_at`；JSON 為同欄位
 | 404 | `NOT_FOUND`（不存在與無權查看皆回 404，不洩漏存在性） |
 | 409 | `CONFLICT`（email / event_id 重複） |
 | 422 | `VALIDATION_ERROR`（含欄位路徑；匯入含行號） |
-| 503 | `SERVICE_UNAVAILABLE`（DB 不可用、Writer 停止） |
+| 503 | `SERVICE_UNAVAILABLE`（DB 連線類錯誤，見下） |
 
 匯入被拒時 `error` 另有 `details`（逐列錯誤，見 §5.3）；其他錯誤沒有這個欄位。
+
+DB 錯誤依 MariaDB errno 分類，REST 與 Writer 共用 `app/core/errors.py` 的 `database_unavailable()`。連線中斷或被拒、太多連線、server 關閉中、lock wait timeout、deadlock、snapshot 衝突（1020）、連線被中斷或閒置斷線、invalidated connection、pool timeout 回 503，WARNING log 帶 `errno`。其他 DB 錯誤（例如 CHECK 4025、unknown column 1054、FK 1452）是程式錯誤，回 500 `INTERNAL_SERVER_ERROR`。asyncmy 把沒有對應類別的 errno 都包成 `OperationalError`，所以不能只看 exception 類別。1020 是 MariaDB 11.7 預設 `innodb_snapshot_isolation=ON` 的結果：一個 request 先讀了某列，另一個 commit 改了它，這個 request 再寫同一列就會被中止；重送可以成功，所以和 deadlock 一樣回 503。
 
 每個 request 帶 `X-Request-ID`（沒有就產生），回覆原樣帶回，application log 與 `system_logs` 一併記錄。DB exception 訊息、密碼、token 不出現在任何 response。
 
@@ -223,7 +231,7 @@ Analytics 一律在 DB 聚合（`select(func.count(), func.sum(), func.avg(), fu
 | Live Monitor | 三條折線（近 120 秒）、即時柱狀圖、異常標記、連線狀態、最後事件時間、系統狀態 |
 | Records | 分頁 / 篩選 / 排序列表、新增 / 編輯 / 刪除（依角色顯示）、CSV / JSON 匯入與結果 |
 | Analytics | KPI、時間區間、Service 聚合、趨勢圖、Excel 下載 |
-| Admin | 使用者與角色、Threshold、系統狀態（buffer / pool / health）、系統日誌、歷史查詢 |
+| Admin | 使用者與角色、Threshold、系統狀態（buffer / pool / health）、系統日誌、歷史查詢；其他角色開啟時只看到提示，API 一律 403 |
 
 Session state 保存 token、使用者資訊、receiver 狀態；每個 session 最多一個 WS receiver，rerun 不重建。Receiver 是 daemon thread，只 append 到有同步保護的 `deque`，不碰 `st.session_state` 或任何 `st.*` API——Streamlit 只保證 script thread 可以安全使用這些；`st.session_state` 只由 script thread 讀寫。Streamlit 沒有可靠的 session 結束 hook，使用者直接關分頁時 thread 會殘留到 token 到期或 server 關閉連線為止，server 端 `WS_MAX_CONNECTIONS` 兜底。Live Monitor 標示「即時（尚未持久化）」，不讓使用者把 live 事件當成已落盤。UI 隱藏按鈕只是體驗，不是授權；所有權限由 Backend 判定。
 
@@ -243,7 +251,7 @@ Compose：`db` 有 healthcheck（`healthcheck.sh --connect --innodb_initialized`
 | DEGRADED | DB 暫時不可用或 Writer 在 retry；buffer 未滿 | 503（需認證的 REST 全部無法服務，所以不算 ready；body 仍是完整 JSON） |
 | UNAVAILABLE | 初始化失敗、Writer 停止、buffer 滿且無法寫入（Writer 在 retry，或已超過 2 個 flush interval 沒有 commit） | 503 |
 
-`/health/ready` 不需要認證，不論狀態碼都回同一份 JSON body，帶 `state` 與 ingestion 計數：`queued`、`in_flight`、`retry_pending`、`total_uncommitted`、`oldest_pending_age_s`、`last_commit_at`、`writer_state`、`active_connections`。每個計數都是在事件所在之處直接讀取：`in_flight` 是 Writer 手上的批次（收集中、寫入中，或永久錯誤後保留在記憶體的那一批，此時 `writer_state=UNAVAILABLE`），`retry_pending` 只在退避（`RETRY_WAIT`）期間非零。這些是營運計數不是敏感資料。放在這裡而不是只放 `/admin/system` 的原因：授權每個 request 都查 DB（ADR-002），DB 故障時 `/admin/system` 本身會 503，而那正是最需要看 buffer 水位的時候。`/admin/system` 在這些之上多給 pool 狀態（`engine.pool.status()`）、threshold 最後載入時間、各表筆數。
+`/health/ready` 不需要認證，不論狀態碼都回同一份 JSON body，帶 `state` 與 ingestion 計數：`queued`、`in_flight`、`retry_pending`、`total_uncommitted`、`oldest_pending_age_s`、`last_commit_at`、`writer_state`、`active_connections`。每個計數都是在事件所在之處直接讀取：`in_flight` 是 Writer 手上的批次（收集中、寫入中，或永久錯誤後保留在記憶體的那一批，此時 `writer_state=UNAVAILABLE`；因為包含收集中的批次，`writer_state=IDLE` 時 `in_flight` 也可能大於 0），`retry_pending` 只在退避（`RETRY_WAIT`）期間非零。這些是營運計數不是敏感資料。放在這裡而不是只放 `/admin/system` 的原因：授權每個 request 都查 DB（ADR-002），DB 故障時 `/admin/system` 本身會 503，而那正是最需要看 buffer 水位的時候。`/admin/system` 的 `readiness` 欄位就是這份 body；能通過認證代表 DB 有回應，所以它以 DB 可用計算 `state`。另外有 `pool`（`engine.pool.status()` 的文字、`pool_size`、`max_overflow`）、`generator`（Generator 目前使用的 threshold map、`thresholds_loaded_at`、因 buffer 滿而暫停的累計秒數 `paused_s`、讓 Generator 停下的 Writer 狀態 `stopped_by`）、`table_counts`（各表的 `select(func.count())`，一次查詢）。
 
 把 readiness 與指標放在同一個端點是 MVP 的刻意簡化：若部署在會把 not-ready 實例移出的 load balancer 後面，這條診斷路徑會跟著不可達，production 應把指標拆到獨立的 `/metrics`（Roadmap 階段 1）。
 
@@ -256,6 +264,6 @@ Compose：`db` 有 healthcheck（`healthcheck.sh --connect --innodb_initialized`
 兩條分開的線：
 
 - **Application log**：stdout、JSON 一行一筆（timestamp、level、logger、request_id、message、extra），由 Docker 收。不寫進 DB，所以 DB 故障時不會出現「寫 log 說 DB 壞了但 log 要寫進 DB」的遞迴。
-- **`system_logs`（稽核）**：只記業務事件——登入成功 / 失敗、註冊、角色或停用變更、threshold 變更、匯入結果、record 刪除、Writer 從 retry 恢復、永久錯誤。與觸發它的業務操作同一個 transaction 寫入；Writer 事件用獨立 session、best-effort。`GET /admin/logs` 查的是這張表，支援 level / event_type / 時間區間 filter 與分頁。
+- **`system_logs`（稽核）**：只記業務事件——登入成功 / 失敗、註冊、角色或停用變更、threshold 變更、匯入結果、record 刪除、Writer 從 retry 恢復、永久錯誤。與觸發它的業務操作同一個 transaction 寫入；Writer 事件用獨立 session、best-effort。`GET /admin/logs` 查的是這張表，支援 level / event_type / 時間區間 filter 與分頁。`event_type` 的值集中在 `app/models` 的 `AuditEvent`：`auth.login`、`auth.register`、`user.updated`、`record.updated`、`record.deleted`、`service.threshold_updated`、`import.succeeded`、`import.failed`、`writer.recovered`、`writer.failed`。`GET /admin/logs/event-types` 回傳同一份清單，Admin 頁用它當篩選選項。
 
 密碼、token、DB credential 不進任何一條線。

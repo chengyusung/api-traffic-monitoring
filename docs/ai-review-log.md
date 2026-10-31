@@ -125,3 +125,29 @@
   - 100k 列（traffic_test，測完清空）：summary 0.01 秒、categories 0.04 秒、minute trend 0.04 秒（556 個 bucket）；export 33,333 列 1.56 秒、2.39 MB；100k 列 export 回 422。約 50k 列 export 期間，10 ms ticker 量到的 event loop 最長停頓是 57 ms。
   - Streamlit `AppTest`（frontend 容器內，連真實 api）：三個帳號開兩個新頁面都沒有 exception。VIEWER 看不到新增、編輯、匯入；USER 新增後可以編輯自己的那一列。把 session 的角色假改成 ADMIN 去刪別人的資料，畫面顯示後端的 `Record not found.`。Excel 下載按鈕出現。`docker compose logs frontend` 沒有 traceback。
   - 未驗證：瀏覽器中的實際外觀與 file uploader 操作（`AppTest` 無法操作上傳元件；上傳走的 `lib/api.import_file` 已在 frontend 容器內直接呼叫確認，422 的 `details` 有正確解析）。GitHub Actions：NOT RUN。
+
+### R-008 M05 Admin + Tests
+
+- 任務：M05。`GET /admin/users`、`PATCH /admin/users/{id}`（只改 role 與 is_active，ADR-002 管理規則回 422）、`GET /admin/logs`（level / event_type / 時間區間 / 分頁）、`GET /admin/logs/event-types`、`GET /admin/system`；Streamlit Admin 頁；testing.md 尚未自動化的案例。另外處理前幾輪 review 留下的項目：REST 的 503 改用 errno 分類、CI 跑 frontend 單元測試、seed 改用 JSON 範例。
+- AI 產出：`AuditEvent` enum 集中所有 `system_logs.event_type`，`record_event()` 只收這個型別。`update_user()` 先鎖住所有有效 ADMIN 列與目標列，再套「不能動自己」與「不能動最後一個有效 ADMIN」兩條規則，變更與 `user.updated` 稽核同一個 transaction。`/admin/system` 的 readiness 與 `/health/ready` 用同一個 `Pipeline.readiness()`，另加 pool 文字與設定、Generator 的 threshold map / `thresholds_loaded_at` / `paused_s` / `stopped_by`、一次查詢的各表筆數。`database_unavailable()` 從 writer 移到 `app/core/errors.py`，REST handler、Writer、WS handshake 共用。Admin 頁用 `lib/api` 的新函式，非 ADMIN 只看到提示。
+- 審查：對 compose 的 MariaDB 跑全部測試；18 個 mutation；以 curl 走 M05 的驗收步驟；停 DB 實測 503 與 log 的 errno；frontend 容器內以 `AppTest` 連真實 api 操作 Admin 頁與 Live 頁；逐 commit 跑 ruff 與 pytest。
+- 發現與修正：
+  1. 第一版 `update_user()` 在認證讀取之後直接 `SELECT … FOR UPDATE`。兩個 last-admin 測試都拿到 MariaDB 1020（`Record has changed since last read`），不是 422。原因是 MariaDB 11.7 預設 `innodb_snapshot_isolation=ON`：鎖定讀取遇到 snapshot 建立後被改過的列就中止。改成先 commit 認證那個只讀的 transaction 再上鎖。commit `45fa7a8`。
+  2. 拿掉 `FOR UPDATE` 的 mutation 被測試抓到，但失敗內容是另一個 transaction 的 1020，不是預期的「兩邊都成功」。所以沒有鎖時，MariaDB 會讓競爭的 request 變成 500；有鎖時是有原因的 422。
+  3. 預定加入 CI 的指令 `cd frontend && uv run python -m unittest` 在本機回 `NO TESTS RAN`。`frontend/tests` 沒有 `__init__.py`，預設 discovery 不會進去。加上 `tests/__init__.py` 後找到 11 個測試。commit `c25f714`。
+  4. REST 的 503 handler 依 exception 類別判斷，CHECK 4025、unknown column 1054 都會變成 503。改用與 Writer 相同的 errno 分類，其他 DB 錯誤回 500。`test_errors.py` 改用真的 asyncmy exception。commit `ee28d75`。
+  5. M04 的 seed 匯入 `sample_traffic.csv`，之後手動匯入同一個檔案一定 409。seed 改成 `sample_traffic.json`，兩個檔案的固定 `event_id` 不重疊。commit `a0bbecf`。
+  6. ADR-001 的錯誤分類段落還寫「`OperationalError` → 暫時錯誤」，與 M03 之後依 errno 判斷的程式不一致。已改寫。
+  7. 在 API 上，最後一個有效 ADMIN 只會是操作者自己，所以「最後一個 ADMIN」規則只在並行時生效。這條改用 integration test 直接呼叫 service 驗證，testing.md 的案例說明已補上這一點。
+  8. 第一版 Admin 頁測試用位置取 selectbox，取到 Level 而不是 event type。修的是測試，改用 widget key。
+  9. 寫 last-admin 測試時看到的 1020 不只影響 Admin：PATCH `/records`、`/services` 也是先讀再寫，同一列在兩者之間被別的 commit 改過就會 1020。M05 之前 asyncmy 的 `OperationalError` 一律回 503；改成依 errno 分類後，它會變成 500。1020 與 deadlock 同類，重送可以成功，所以加入暫時錯誤清單，REST 仍回 503。新增一個在真實 MariaDB 上觸發 1020 的 integration test。commit `60eac2d`。
+  10. 未修：frontend 頁面測試在主機上第一次執行時有一個 `AppTest` 10 秒逾時，之後 13 次都在 1 秒內完成。推測是 macOS 第一次載入新 venv 的原生程式庫時的掃描，未證實。
+- 驗證（Podman、`docker compose`、MariaDB 11.7）：
+  - `docker compose down -v` 後 `docker compose up --build -d --wait` exit 0。`docker compose exec -T api pytest -q` exit 0，339 passed（原本 291）。新增 48 個：`api/test_admin_users.py` 24、`api/test_admin_system.py` 14、`integration/test_last_admin.py` 2、`integration/test_snapshot_conflict.py` 1、`api/test_errors.py` 5、`unit/test_writer_errors.py` 1、`integration/test_bootstrap.py` 1。api 容器內 `ruff check .`、`ruff format --check .` 皆 exit 0。
+  - `cd frontend && uv sync --frozen && uv run python -m unittest` exit 0，11 tests（原本 7 個，但預設 discovery 找不到）。
+  - curl：admin 把 viewer 改成 USER 回 200，viewer 原本的 token `POST /records` 從 403 變成 201；admin 停用自己回 422 `You cannot deactivate or demote yourself.`；改 email 回 422 `email cannot be changed`；`GET /admin/system` 200，含 `Pool size: 5 …` 與 `table_counts`；user@example.com `GET /admin/users` 回 403。剛建立的 stack 上，`GET /imports/1` 是 `seed:sample_traffic.json` SUCCEEDED 6/6，user 匯入 `data/sample_traffic.csv` 回 201 SUCCEEDED 15/15。
+  - 停 DB：`/admin/system` 與 `/records` 回 503 `SERVICE_UNAVAILABLE`，api log 為 `database unavailable {"error": "OperationalError", "errno": 2003}`；`/health/ready` 不帶 token 回 503 DEGRADED。DB 啟動後兩者回到 200。
+  - frontend 容器內 `AppTest` 連真實 api：Admin 頁五個區塊都出現、沒有 exception；在頁面上停用自己時，畫面顯示後端原文 `You cannot deactivate or demote yourself.`；VIEWER 只看到提示。Live 頁連續 rerun 20 次後 `/admin/system` 的 `active_connections` 是 1，停止 receiver 後是 0。`docker compose logs frontend` 沒有 traceback。
+  - Mutation 18 / 18 被抓到：REST 不分類就回 503、忽略 invalidated connection、1020 不算暫時錯誤、拿掉最後 ADMIN 規則、拿掉不能動自己、拿掉 `FOR UPDATE`（3 次都抓到）、拿掉先 commit、沒有變更也寫稽核、拿掉 email 的原因訊息、日誌次排序改 id 升冪、`end` 含端點、忽略 level、readiness 以 DB 不可用計算、`stopped_by` 不輸出、event types 少一個、seed 改回 CSV、每次 rerun 建新 receiver、Admin 頁不擋非 ADMIN。
+  - 逐 commit：每個 commit 以 `git archive` 取出，`uvx ruff@0.17.3 check` 與 `format --check` 皆 exit 0；pytest 各 commit 都通過（依序 295、295、295、295、296、296、336、336、339 passed）。
+  - 未驗證：瀏覽器中的實際畫面（`AppTest` 不會畫出來）；Streamlit 自動產生的側欄仍會列出 Admin 頁，非 ADMIN 點進去只看到提示。GitHub Actions：NOT RUN。
