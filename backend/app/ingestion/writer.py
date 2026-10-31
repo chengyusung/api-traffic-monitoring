@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.core.errors import database_unavailable
 from app.db import is_duplicate_key
 from app.ingestion.buffer import IngestionBuffer, IngestionEvent, IngestionStats, WriterState
-from app.models import AuditEvent, TrafficRecord, utcnow
+from app.models import AuditEvent, AuditLevel, TrafficRecord, utcnow
 from app.services import audit
 
 logger = logging.getLogger(__name__)
@@ -267,7 +267,7 @@ class BatchWriter:
                 session.add_all(records(await missing_only(session, batch)))
 
     async def _audit(
-        self, event_type: AuditEvent, message: str, *, level: str, context: dict[str, Any]
+        self, event_type: AuditEvent, message: str, *, level: AuditLevel, context: dict[str, Any]
     ) -> None:
         """Best effort, in its own session: the database may be the thing that failed."""
         try:

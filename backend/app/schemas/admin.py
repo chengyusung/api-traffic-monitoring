@@ -1,10 +1,10 @@
 from datetime import datetime
-from typing import Any, Literal, Self
+from typing import Any, Self
 
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, model_validator
 
 from app.ingestion.buffer import WriterState
-from app.models import AuditEvent, Role
+from app.models import AuditEvent, AuditLevel, Role
 from app.schemas import Pagination, PartialUpdate
 from app.schemas.auth import UserRead
 from app.schemas.realtime import Readiness
@@ -34,7 +34,7 @@ class UserUpdate(PartialUpdate):
 
 
 class LogQuery(Pagination):
-    level: Literal["INFO", "WARNING", "ERROR"] | None = None
+    level: AuditLevel | None = None
     event_type: AuditEvent | None = None
     start: UTCInstant | None = Field(default=None, description="Inclusive: created_at >= start")
     end: UTCInstant | None = Field(default=None, description="Exclusive: created_at < end")

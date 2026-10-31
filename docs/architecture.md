@@ -264,6 +264,6 @@ Compose：`db` 有 healthcheck（`healthcheck.sh --connect --innodb_initialized`
 兩條分開的線：
 
 - **Application log**：stdout、JSON 一行一筆（timestamp、level、logger、request_id、message、extra），由 Docker 收。不寫進 DB，所以 DB 故障時不會出現「寫 log 說 DB 壞了但 log 要寫進 DB」的遞迴。
-- **`system_logs`（稽核）**：只記業務事件——登入成功 / 失敗、註冊、角色或停用變更、threshold 變更、匯入結果、record 刪除、Writer 從 retry 恢復、永久錯誤。與觸發它的業務操作同一個 transaction 寫入；Writer 事件用獨立 session、best-effort。`GET /admin/logs` 查的是這張表，支援 level / event_type / 時間區間 filter 與分頁。`event_type` 的值集中在 `app/models` 的 `AuditEvent`：`auth.login`、`auth.register`、`user.updated`、`record.updated`、`record.deleted`、`service.threshold_updated`、`import.succeeded`、`import.failed`、`writer.recovered`、`writer.failed`。`GET /admin/logs/event-types` 回傳同一份清單，Admin 頁用它當篩選選項。
+- **`system_logs`（稽核）**：只記業務事件——登入成功 / 失敗、註冊、角色或停用變更、threshold 變更、匯入結果、record 刪除、Writer 從 retry 恢復、永久錯誤。與觸發它的業務操作同一個 transaction 寫入；Writer 事件用獨立 session、best-effort。`GET /admin/logs` 查的是這張表，支援 level / event_type / 時間區間 filter 與分頁。`event_type` 的值集中在 `app/models` 的 `AuditEvent`：`auth.login`、`auth.register`、`user.updated`、`record.updated`、`record.deleted`、`service.threshold_updated`、`import.succeeded`、`import.failed`、`writer.recovered`、`writer.failed`。`GET /admin/logs/event-types` 回傳同一份清單，Admin 頁用它當篩選選項。欄位本身是字串，所以 `record_event()` 寫入前以 `AuditEvent(...)` 轉換，清單外的名稱直接 raise；`level` 只有 INFO、WARNING、ERROR（`AuditLevel`）。
 
 密碼、token、DB credential 不進任何一條線。

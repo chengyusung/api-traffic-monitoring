@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Any
+from typing import Any, Literal
 
 from sqlalchemy import (
     CHAR,
@@ -71,6 +71,10 @@ class AuditEvent(StrEnum):
     IMPORT_FAILED = "import.failed"
     WRITER_RECOVERED = "writer.recovered"
     WRITER_FAILED = "writer.failed"
+
+
+# system_logs.level: what record_event writes and GET /admin/logs filters on.
+AuditLevel = Literal["INFO", "WARNING", "ERROR"]
 
 
 class User(Base):

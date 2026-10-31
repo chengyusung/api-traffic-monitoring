@@ -12,6 +12,7 @@ from app.main import app
 from app.models import AuditEvent, SystemLog
 from app.pipeline import Pipeline
 from app.services import admin as admin_service
+from app.services import audit
 from tests.api.test_records import insert_record
 from tests.conftest import Identity
 
@@ -145,6 +146,15 @@ async def test_event_types_list_every_name_the_application_writes(
         "writer.failed",
         "writer.recovered",
     ]
+
+
+def test_an_event_type_outside_audit_event_is_refused_before_it_is_added() -> None:
+    session = AsyncSession()
+
+    with pytest.raises(ValueError, match="auth.logout"):
+        audit.record_event(session, "auth.logout", "not a known event")  # type: ignore[arg-type]
+
+    assert not session.new
 
 
 @pytest.mark.parametrize(
