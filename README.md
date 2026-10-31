@@ -260,29 +260,29 @@ docker compose exec api ruff check . && docker compose exec api ruff format --ch
 
 ## 交付狀態
 
-圖例：✅ PASS、❌ FAIL、⬜ NOT RUN。每列對應 [`docs/testing.md`](docs/testing.md) 的同一個 ID。證據欄是一句觀察結果加 commit；完整命令、exit code 與環境見 testing.md 的驗收證據。所有驗證都在 macOS 上以 Podman 5.7 經由 docker CLI 執行，commit 2798239（M05 合併點）。Docker Engine 沒有測過，GitHub Actions workflow 也還沒有跑過。只做到一部分的案例，在該列寫明哪一半有跑。
+圖例：✅ PASS、❌ FAIL、⬜ NOT RUN。每列對應 [`docs/testing.md`](docs/testing.md) 的同一個 ID。證據欄是一句觀察結果加 commit；完整命令、exit code 與環境見 testing.md 的驗收證據。所有驗證都在 macOS 上以 Podman 5.7 經由 docker CLI 執行，commit bcaf2eb（M04 與 M05 修正後；DEP-03 既有 volume 那一半是 f31f41f）。Docker Engine 沒有測過，GitHub Actions workflow 也還沒有跑過。只做到一部分的案例，在該列寫明哪一半有跑。
 
 | ID | 驗收 | 狀態 | 證據 |
 |---|---|---|---|
-| DEP-01 | 一鍵啟動：`docker compose up --build` → ready 200、`/docs`、登入 | ✅ | `up --build -d --wait` exit 0，ready 200、`/docs` 200，三個帳號 `/auth/token` 200；登入走 API，沒有在瀏覽器操作 UI（2798239） |
-| DEP-02 | `down` 後 `up`，資料仍在 | ✅ | `down` 再 `up`，volume 保留，record 137 回 200（2798239） |
+| DEP-01 | 一鍵啟動：`docker compose up --build` → ready 200、`/docs`、登入 | ✅ | `up --build -d --wait` exit 0，ready 200、`/docs` 200，三個帳號 `/auth/token` 200；登入走 API，沒有在瀏覽器操作 UI（bcaf2eb） |
+| DEP-02 | `down` 後 `up`，資料仍在 | ✅ | `down` 再 `up`，volume 保留，record 97 回 200（bcaf2eb） |
 | DEP-03 | 測試庫初始化：全新 volume 有 `traffic_test`，既有 volume 沒有 | ✅ | 全新 volume 通過：`down -v` 後 `up`，`SHOW DATABASES` 有 `traffic_test`；既有 volume 通過：沒掛 `db/init` 初始化的 volume 上 `up` 後仍沒有 `traffic_test`，`down -v` 後才有（f31f41f） |
-| AUTH-01 | VIEWER 不可寫 | ✅ | viewer `POST /records` 403，筆數前後都是 99（2798239） |
-| AUTH-02 | Ownership：USER 改刪他人資料 | ✅ | user `PATCH` 與 `DELETE` 他人的 record 皆 404（2798239） |
-| AUTH-03 | 不可自行升權 | ✅ | register 帶 `role=ADMIN` 422，不帶 role 201 且為 USER（2798239） |
-| AUTH-04 | WebSocket 認證，無 token → 4401 | ✅ | live 驗證無 token close 4401，有效 token 第一則是 `status`；token 過期 → 4401 只由單元測試覆蓋，沒有在 live 驗證（2798239） |
-| TZ-01 | 時間 round-trip | ✅ | `pytest -k timezone` 2 passed；`+08:00` 寫入讀回 `08:00:04Z`，DB 內 naive `08:00:04`（2798239） |
-| HEALTH-01 | 停 DB 時 `/health/ready` 不需認證回 503，body 含 DEGRADED 與計數 | ✅ | 停 DB 後不帶 token 回 503，`DEGRADED`，`total_uncommitted` 45 到 141；`/admin/system` 503（2798239） |
-| REC-01 | 分頁 / 篩選 / 排序 | ✅ | 總數 99 = 33 + 33 + 33，分頁不重疊，排序單調，`page_size=101` 422（2798239） |
-| BUF-01 | 容量含 in-flight，總 reservation ≤ 1,000 | ✅ | 每秒取樣 307 次，計數恆等，最大 141，未超過 1,000（2798239） |
-| BUF-02 | Flush 條件，100 筆或 5 秒先到者觸發 | ✅ | live 觀察到 5 秒觸發，`last_commit_at` 6 秒內推進；100 筆觸發只由單元測試覆蓋（2798239） |
-| RETRY-01 | DB 停 30 秒恢復後 accepted = persisted，無重複 | ✅ | 停 35 秒後 HEALTHY；`count(*)` 888 = `count(distinct event_id)` 888（2798239） |
-| WS-01 | Real-time First，client 先收到、DB 尚無 | ✅ | 以時間差驗證：三次都是 WS 事件已收到、+0.01 秒 DB 查不到、+6.5 秒查得到；沒有暫停 Writer（2798239） |
-| WS-02 | Receiver 唯一，rerun 後連線數維持 1 | ✅ | AppTest 對真實 api 跑 Live 頁 20 次 rerun，`active_connections` 維持 1；不是真瀏覽器（2798239） |
-| IMP-01 | CSV / JSON 匯入 All-or-Nothing | ✅ | CSV 15 列 201；`value=-1` 整批 422 指出第 4 列，筆數不變，batch 記 FAILED（2798239） |
-| ANA-01 | summary / categories / trends 對帳 | ✅ | 固定 `end` 後 payment 的 summary 313 = records total 313，categories 加總與趨勢加總一致（2798239） |
-| ANA-02 | Excel 匯出可開、列數與 filter 一致 | ✅ | openpyxl 開啟 314 列，扣標頭 = 313 = count（2798239） |
-| ADM-01 | Admin 管理：改角色下一個 request 生效；停用或降級自己被拒 | ✅ | live 驗證改角色立即生效、停用或降級自己 422；兩個 ADMIN 並行互相降級的規則只由 integration test 覆蓋（2798239） |
+| AUTH-01 | VIEWER 不可寫 | ✅ | viewer `POST /records` 403，筆數前後都是 99（bcaf2eb） |
+| AUTH-02 | Ownership：USER 改刪他人資料 | ✅ | user `PATCH` 與 `DELETE` 他人的 record 皆 404（bcaf2eb） |
+| AUTH-03 | 不可自行升權 | ✅ | register 帶 `role=ADMIN` 422，不帶 role 201 且為 USER（bcaf2eb） |
+| AUTH-04 | WebSocket 認證，無 token → 4401 | ✅ | live 驗證無 token close 4401，有效 token 第一則是 `status`；token 過期 → 4401 只由單元測試覆蓋，沒有在 live 驗證（bcaf2eb） |
+| TZ-01 | 時間 round-trip | ✅ | `pytest -k timezone` 2 passed；`+08:00` 寫入讀回 `08:00:04Z`，DB 內 naive `08:00:04`（bcaf2eb） |
+| HEALTH-01 | 停 DB 時 `/health/ready` 不需認證回 503，body 含 DEGRADED 與計數 | ✅ | 停 DB 後不帶 token 回 503，`DEGRADED`，`total_uncommitted` 42 到 57；`/admin/system` 503（bcaf2eb） |
+| REC-01 | 分頁 / 篩選 / 排序 | ✅ | 總數 99 = 33 + 33 + 33，分頁不重疊，排序單調，`page_size=101` 422（bcaf2eb） |
+| BUF-01 | 容量含 in-flight，總 reservation ≤ 1,000 | ✅ | 每秒取樣 255 次有 body，計數恆等，最大 180，未超過 1,000（bcaf2eb） |
+| BUF-02 | Flush 條件，100 筆或 5 秒先到者觸發 | ✅ | live 觀察到 5 秒觸發，`last_commit_at` 6 秒內推進；100 筆觸發只由單元測試覆蓋（bcaf2eb） |
+| RETRY-01 | DB 停 30 秒恢復後 accepted = persisted，無重複 | ✅ | 停 DB 後 58 秒 HEALTHY；`count(*)` 494 = `count(distinct event_id)` 494（bcaf2eb） |
+| WS-01 | Real-time First，client 先收到、DB 尚無 | ✅ | 以時間差驗證：三次都是 WS 事件已收到、+0.01 到 +0.03 秒 DB 查不到、+6.54 秒查得到；沒有暫停 Writer（bcaf2eb） |
+| WS-02 | Receiver 唯一，rerun 後連線數維持 1 | ✅ | 前端 17 個 unittest 通過，含 AppTest 的 one-receiver 測試；這一輪沒有重跑真實 api 上的 20 次 rerun；不是真瀏覽器（bcaf2eb） |
+| IMP-01 | CSV / JSON 匯入 All-or-Nothing | ✅ | CSV 15 列 201；`value=-1` 整批 422 指出第 4 列，筆數不變，batch 記 FAILED；`=HYPERLINK(...)` title 201，`\x01` title 422，6 MB 上傳 413（bcaf2eb） |
+| ANA-01 | summary / categories / trends 對帳 | ✅ | 固定 `end` 後 payment 的 summary 197 = records total 197，categories 加總與趨勢加總一致（bcaf2eb） |
+| ANA-02 | Excel 匯出可開、列數與 filter 一致 | ✅ | openpyxl 開啟 198 列，扣標頭 = 197 = count；公式字樣的 title 匯出為文字，沒有 `<f>`（bcaf2eb） |
+| ADM-01 | Admin 管理：改角色下一個 request 生效；停用或降級自己被拒 | ✅ | live 驗證改角色立即生效、停用或降級自己 422；兩個 ADMIN 並行互相降級的規則只由 integration test 覆蓋（bcaf2eb） |
 | CI-01 | GitHub Actions：ruff + pytest + docker build | ⬜ | ci.yml 的每個 run step 於 2026-11-01 在本機依序重放，全部 exit 0；Actions 本身尚未執行 |
 
 ## 已知限制
