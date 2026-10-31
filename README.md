@@ -111,24 +111,24 @@ docker compose down -v                     # 停止並刪除資料 volume
 
 ## 本地運行（不用 Docker）
 
-需要 Python 3.12 與一個可連線的 MariaDB 11.7。
+需要 Python 3.12、[uv](https://docs.astral.sh/uv/) 與一個可連線的 MariaDB 11.7。最簡單的做法是只啟動 compose 的 `db`（`docker compose up -d db`），它把 3306 綁在 `127.0.0.1`。
 
 ```bash
+cp .env.example .env     # 把 DATABASE_URL / TEST_DATABASE_URL 的 @db: 改成 @127.0.0.1:
+
 # 後端
 cd backend
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-cp ../.env.example ../.env     # 把 DB_HOST / DATABASE_URL 的 db 改成 localhost
-alembic upgrade head
-uvicorn app.main:app --reload --port 8000
+uv sync
+uv run --env-file ../.env alembic upgrade head
+uv run --env-file ../.env uvicorn app.main:app --reload --port 8000
+uv run --env-file ../.env pytest -q     # 測試（traffic_test 由 db/init 建立）
 
 # 前端（另一個終端）
 cd frontend
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
+uv sync
 API_BASE_URL=http://localhost:8000/api/v1 \
 API_WS_URL=ws://localhost:8000/api/v1/ws/traffic \
-streamlit run app.py
+uv run streamlit run app.py
 ```
 
 ## API 文件
