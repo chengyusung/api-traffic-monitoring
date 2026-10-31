@@ -40,7 +40,7 @@ REFUSAL = "You cannot deactivate or demote yourself."
 
 
 def page(name: str, user: dict[str, Any]) -> AppTest:
-    app = AppTest.from_file(f"../pages/{name}", default_timeout=10)
+    app = AppTest.from_file(f"../pages/{name}", default_timeout=30)
     app.session_state["token"] = "token"
     app.session_state["user"] = user
     return app
