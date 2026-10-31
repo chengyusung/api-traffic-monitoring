@@ -260,23 +260,30 @@ docker compose exec api ruff check . && docker compose exec api ruff format --ch
 
 ## 交付狀態
 
-圖例：✅ PASS、❌ FAIL、⏸ 未實作、⬜ 未執行。證據欄是 commit 加上證明它的觀察結果；完整命令、exit code 與環境見 [`docs/testing.md`](docs/testing.md) 的驗收證據。環境是 macOS 上的 Podman 5.7（docker CLI），commit 2798239（M05 合併點）；Docker Engine 沒有在本機測過。
+圖例：✅ PASS、❌ FAIL、⬜ NOT RUN。每列對應 [`docs/testing.md`](docs/testing.md) 的同一個 ID。證據欄是一句觀察結果加 commit；完整命令、exit code 與環境見 testing.md 的驗收證據。所有驗證都在 macOS 上以 Podman 5.7 經由 docker CLI 執行，commit 2798239（M05 合併點）。Docker Engine 沒有測過，GitHub Actions workflow 也還沒有跑過。只做到一部分的案例，在該列寫明哪一半有跑。
 
 | ID | 驗收 | 狀態 | 證據 |
 |---|---|---|---|
-| DEP-01 | 乾淨 clone → `docker compose up --build` → Swagger、UI 登入 | ✅ | 2798239；`docker compose up --build -d --wait` exit 0，ready 200、`/docs` 200、三個帳號登入 200 |
-| DEP-02 | `down` / `up` 後資料保留 | ✅ | 2798239；`down` 後 `up`，record 137 仍回 200，volume 保留 |
-| AUTH-01 | VIEWER 不可寫；USER 不可動他人資料；register 不可升權 | ✅ | 2798239；viewer `POST /records` 403，筆數前後都是 99；user 改刪他人資料 404；`role=ADMIN` 註冊 422 |
-| AUTH-02 | WebSocket 無 token / 過期 → 4401 | ✅ | 2798239；無 token 連 WS 收到 close 4401；有效 token 第一則是 `status` |
-| HEALTH-01 | 停 DB 時 `/health/ready` 不需認證回 503，body 含 DEGRADED 與計數 | ✅ | 2798239；停 DB 後不帶 token 的 `/health/ready` 回 503，`DEGRADED`，`total_uncommitted` 45 到 141；`/admin/system` 503 |
-| REC-01 | CRUD、分頁 / 篩選 / 排序、bulk | ✅ | 2798239；總數 99 = 33 + 33 + 33，分頁不重疊，升降冪排序正確，`page_size=101` 422 |
-| IMP-01 | CSV / JSON 匯入 All-or-Nothing | ✅ | 2798239；CSV 15 列 201；`value=-1` 整批 422 並指出第 4 列；筆數不變，batch 記 FAILED |
-| BUF-01 | 100 筆或 5 秒 flush；容量含 in-flight | ✅ | 2798239；每秒取樣 307 次，`queued + in_flight + retry_pending` 恆等於 `total_uncommitted`，最大 141，未超過 1,000；`last_commit_at` 在 6 秒內推進，共 42 個不同值 |
-| RETRY-01 | DB 停 30 秒恢復後 drain，`event_id` 無重複 | ✅ | 2798239；停 DB 30 秒，35 秒後 HEALTHY；多寫 153 筆 = 51 秒 × 3 筆；`count(*)` 888 = `count(distinct event_id)` 888 |
-| WS-01 | Live 先於 DB 出現事件；rerun 不重複 receiver | ✅ | 2798239；三次都是 client 先收到事件、+0.01 秒查不到、+6.5 秒查得到；20 次 rerun 後 `active_connections` 為 1（AppTest，非真瀏覽器） |
-| ANA-01 | summary / categories / trends 對帳；Excel 可開 | ✅ | 2798239；固定 `end` 後 payment 的 summary 313 = records total 313；categories 加總 941 = summary；趨勢 9 個 bucket 加總 313；Excel 以 openpyxl 開啟共 314 列，扣標頭 = 313 |
-| ADM-01 | 使用者管理、threshold、系統日誌、系統狀態 | ✅ | 2798239；viewer 改 USER 後舊 token `POST /records` 201，改回 403；停用或降級自己 422；`/admin/logs` 有 2 筆 `user.updated` |
-| CI-01 | GitHub Actions：ruff + pytest + docker build | ⬜ | GitHub Actions 在 push 之後才會跑；本機只跑過同一組 `uvx ruff` 指令（exit 0） |
+| DEP-01 | 一鍵啟動：`docker compose up --build` → ready 200、`/docs`、登入 | ✅ | `up --build -d --wait` exit 0，ready 200、`/docs` 200，三個帳號 `/auth/token` 200；登入走 API，沒有在瀏覽器操作 UI（2798239） |
+| DEP-02 | `down` 後 `up`，資料仍在 | ✅ | `down` 再 `up`，volume 保留，record 137 回 200（2798239） |
+| DEP-03 | 測試庫初始化：全新 volume 有 `traffic_test`，既有 volume 沒有 | ✅ / ⬜ | 全新 volume 通過：`down -v` 後 `up`，`SHOW DATABASES` 有 `traffic_test`；既有 volume 那一半 NOT RUN（2798239） |
+| AUTH-01 | VIEWER 不可寫 | ✅ | viewer `POST /records` 403，筆數前後都是 99（2798239） |
+| AUTH-02 | Ownership：USER 改刪他人資料 | ✅ | user `PATCH` 與 `DELETE` 他人的 record 皆 404（2798239） |
+| AUTH-03 | 不可自行升權 | ✅ | register 帶 `role=ADMIN` 422，不帶 role 201 且為 USER（2798239） |
+| AUTH-04 | WebSocket 認證，無 token → 4401 | ✅ | live 驗證無 token close 4401，有效 token 第一則是 `status`；token 過期 → 4401 只由單元測試覆蓋，沒有在 live 驗證（2798239） |
+| TZ-01 | 時間 round-trip | ✅ | `pytest -k timezone` 2 passed；`+08:00` 寫入讀回 `08:00:04Z`，DB 內 naive `08:00:04`（2798239） |
+| HEALTH-01 | 停 DB 時 `/health/ready` 不需認證回 503，body 含 DEGRADED 與計數 | ✅ | 停 DB 後不帶 token 回 503，`DEGRADED`，`total_uncommitted` 45 到 141；`/admin/system` 503（2798239） |
+| REC-01 | 分頁 / 篩選 / 排序 | ✅ | 總數 99 = 33 + 33 + 33，分頁不重疊，排序單調，`page_size=101` 422（2798239） |
+| BUF-01 | 容量含 in-flight，總 reservation ≤ 1,000 | ✅ | 每秒取樣 307 次，計數恆等，最大 141，未超過 1,000（2798239） |
+| BUF-02 | Flush 條件，100 筆或 5 秒先到者觸發 | ✅ | live 觀察到 5 秒觸發，`last_commit_at` 6 秒內推進；100 筆觸發只由單元測試覆蓋（2798239） |
+| RETRY-01 | DB 停 30 秒恢復後 accepted = persisted，無重複 | ✅ | 停 35 秒後 HEALTHY；`count(*)` 888 = `count(distinct event_id)` 888（2798239） |
+| WS-01 | Real-time First，client 先收到、DB 尚無 | ✅ | 以時間差驗證：三次都是 WS 事件已收到、+0.01 秒 DB 查不到、+6.5 秒查得到；沒有暫停 Writer（2798239） |
+| WS-02 | Receiver 唯一，rerun 後連線數維持 1 | ✅ | AppTest 對真實 api 跑 Live 頁 20 次 rerun，`active_connections` 維持 1；不是真瀏覽器（2798239） |
+| IMP-01 | CSV / JSON 匯入 All-or-Nothing | ✅ | CSV 15 列 201；`value=-1` 整批 422 指出第 4 列，筆數不變，batch 記 FAILED（2798239） |
+| ANA-01 | summary / categories / trends 對帳 | ✅ | 固定 `end` 後 payment 的 summary 313 = records total 313，categories 加總與趨勢加總一致（2798239） |
+| ANA-02 | Excel 匯出可開、列數與 filter 一致 | ✅ | openpyxl 開啟 314 列，扣標頭 = 313 = count（2798239） |
+| ADM-01 | Admin 管理：改角色下一個 request 生效；停用或降級自己被拒 | ✅ | live 驗證改角色立即生效、停用或降級自己 422；兩個 ADMIN 並行互相降級的規則只由 integration test 覆蓋（2798239） |
+| CI-01 | GitHub Actions：ruff + pytest + docker build | ⬜ | workflow 還沒有跑過；本機只跑過同一組 `uvx ruff` 指令（exit 0） |
 
 ## 已知限制
 
