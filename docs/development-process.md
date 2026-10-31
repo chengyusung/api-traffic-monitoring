@@ -6,11 +6,11 @@
 
 ## 1. 摘要
 
-專案在約 5 小時 10 分內完成實作與驗收。計時從決策紀錄的第一列（10 月 31 日 23:37）到最後一列（11 月 1 日 04:47）。設計文件的撰寫時間不在內，因為沒有記錄。
+專案在約 5 小時 10 分內完成實作與驗收。計時從決策紀錄的第一列（10 月 31 日 23:37）到第一次驗收與文件交付完成的最後一列（11 月 1 日 04:47）。之後的審查、修正與第二次驗收從 05:03 到 06:20，所以到決策紀錄的最後一列（06:20）共約 6 小時 43 分。設計文件的撰寫時間不在內，因為沒有記錄。
 
 過程是一個 coordinator 加六個 implementation owner。coordinator 是一個 Claude Code session，跑在 fable 模型上。它規劃、寫任務說明（brief）、親自驗證、合併。每個 milestone 由一個獨立的 owner 在自己的 git worktree 裡實作。M01 到 M05 的 owner 用 opus。文件、投影片和獨立驗收用 sonnet。
 
-認證（M02）與即時推送（M03）各做了一次三模型對抗審查（opus、fable、sonnet 各一位 reviewer），再各做一輪修正。M02 的修正輪有 18 個 commit，M03 有 17 個。
+認證（M02）與即時推送（M03）各做了一次三模型對抗審查（opus、fable、sonnet 各一位 reviewer），再各做一輪修正。M02 的修正輪有 18 個 commit，M03 有 17 個。M04 與 M05 原本依計畫略過審查，在第一次驗收與文件交付之後才補做，一起審查，修正輪有 15 個 commit（第 5.8 節）。因為修正輪改了匯入、匯出、管理與 schema 的程式，驗收表在 `bcaf2eb` 上重跑了一次（第 7.2 節）。
 
 最終結果在 `main` 的 `f45311a`。第二次驗收的 commit 是 `bcaf2eb`（第一次驗收在 `2798239`）：
 
@@ -57,6 +57,7 @@ CI-01 要在 GitHub 上跑，由擁有者 push 之後才會執行。所以 CI �
 | coordinator | 規劃、寫 brief、驗證、合併、記錄決策 | fable |
 | implementation owner（M01 到 M05） | 在自己的 worktree 實作一個 milestone，寫 report | opus |
 | 修正輪 owner（M02、M03） | 套用審查後接受的項目 | opus |
+| 修正輪 owner（M04 與 M05） | 套用第三輪審查接受的 15 項 | 紀錄裡沒有寫 |
 | 審查者（每次 interrogate 三位） | 唯讀審查一個 commit 範圍 | opus、fable、sonnet 各一 |
 | 獨立驗收者 | 在 detached worktree 上執行驗收表 | sonnet |
 | 文件、投影片、本文件的 owner | 寫 README、投影片、本文件 | sonnet |
@@ -78,7 +79,7 @@ CI-01 要在 GitHub 上跑，由擁有者 push 之後才會執行。所以 CI �
 | 4 委派實作 | 做了 | 每個 milestone 一個 owner，因為 compose、config、`main.py` 把所有模組綁在一起。 |
 | 5 在對應介面驗證 | 做了 | coordinator 用 docker compose（在 Podman 上）、curl、容器內 pytest、ruff。 |
 | 6 整理成小而有序的 commit | 做了 | owner 提交邏輯單元，coordinator 做 fast-forward 合併。 |
-| 7 `interrogate` | 只做 M02、M03 | M04 與 M05 依計畫略過（見 3.4）。 |
+| 7 `interrogate` | M02、M03，之後補做 M04 與 M05 | M04 與 M05 原本依計畫略過（見 3.4），在第一次驗收之後補做（見 5.8）。 |
 | 8 Opening a PR | 略過 | 擁有者自己 push 到 GitHub，commit 留在本機 `main`。 |
 
 `todo.md` 的最後一個未勾選項目是「show-me-your-work audit + cross-model review of the trail」，也就是對這份決策紀錄本身的審查，在寫作本文時尚未進行。
@@ -91,9 +92,9 @@ CI-01 要在 GitHub 上跑，由擁有者 push 之後才會執行。所以 CI �
 - README、testing.md、投影片、本文件與獨立驗收用 sonnet。決策紀錄寫的理由是這些是簡單工作，由擁有者指定模型分配。
 - 審查用三個模型家族各一位。決策紀錄寫「跨模型家族的共識是訊號」。
 
-### 3.4 為什麼 M04 與 M05 不審查
+### 3.4 為什麼 M04 與 M05 起初不審查
 
-決策紀錄寫得很直接。M04 是「建在已審查過的 auth 與 records service 之上的資料管線」。M05 是「建在已審查過的 auth 之上的 admin CRUD，保護規則有 MariaDB 上的競爭測試」。這是風險判斷，不是證明。M05 的 owner 自己發現了 1020 問題（見 5.5），這代表沒有審查也找得到問題，但不代表沒有審查就沒有遺漏。
+後來補做了審查（見 5.8），結果是 1 個 critical 與 14 個其他採納項目，所以下面這個判斷事後看是錯的。當時的理由如下。決策紀錄寫得很直接。M04 是「建在已審查過的 auth 與 records service 之上的資料管線」。M05 是「建在已審查過的 auth 之上的 admin CRUD，保護規則有 MariaDB 上的競爭測試」。這是風險判斷，不是證明。M05 的 owner 自己發現了 1020 問題（見 5.5），這代表沒有審查也找得到問題，但不代表沒有審查就沒有遺漏。補做的審查證明了後半句。
 
 ### 3.5 每個 milestone 的固定動作
 
@@ -284,7 +285,7 @@ owner 不同意或沒做的部分：REST 的 503 handler 沒有依 errno 細分�
 
 **決策。** seed 改匯入 JSON 而不是 CSV，讓 demo 的 CSV 匯入在乾淨 stack 上能成功。決策紀錄記錄了依據。兩個檔案的固定 id 各 3 個，重疊 0 個。這件事指派給 M05。
 
-**審查。** 略過（見 3.4）。
+**審查。** 當時略過（見 3.4）。之後與 M05 一起審查，見 5.8。
 
 **合併。** `2e351e7`，03:53。
 
@@ -307,7 +308,7 @@ owner 不同意或沒做的部分：REST 的 503 handler 沒有依 errno 細分�
 
 **coordinator 驗證。** pytest 339 passed，ruff 乾淨，主機上 frontend 11 tests。viewer 被升為 USER 後，同一個舊 token 的 `POST /records` 回 201。自己停用自己與自己降級回 422。email 變更回 422。非 admin 打 `/admin/*` 回 403。`/admin/system` 有 pool、table counts、readiness、generator stats。有 10 種稽核事件。壞的 `event_type` 回 422。CI 有 frontend job。seed 現在是 JSON 6/6，CSV sample 匯入回 201（15/15）。
 
-**審查。** 略過（見 3.4）。
+**審查。** 當時略過（見 3.4）。之後與 M04 一起審查，見 5.8。
 
 **合併。** `2798239`，04:32。
 
@@ -333,18 +334,51 @@ coordinator 發現時間軸上有一個標籤錯了。驗收完成應該是 04:4
 
 **合併。** README 與投影片合併後 `main` 是 `9154d72`（89 個 commit）。
 
+### 5.8 M04 與 M05 的審查與修正輪
+
+**時間。** coordinator 在 05:09 派出三位 reviewer，同時派出 CI 步驟重放（第 7.3 節）。決策紀錄在 05:28 寫下審查結論。修正輪的 15 個 commit 在 05:38 到 05:55。coordinator 在 06:11 驗證並合併為 `bcaf2eb`，同一時刻開始重跑驗收（第 7.2 節）。
+
+**為什麼補做。** M04 與 M05 是唯一沒有對抗審查的 milestone。決策紀錄寫的理由是補上這一輪，Feature playbook 的第 7 步才涵蓋整個程式碼。審查範圍是 `6fd52c2..2798239`。
+
+**審查結果。** opus 14 項（1 critical、7 warning、6 nit），fable 18 項（8 warning、10 nit），sonnet 11 項（7 warning、4 nit），共 43 項。唯一的 critical 由 opus 提出，而且三位 reviewer 都指出同一個問題。匯出的 Excel 把使用者的 title 原樣寫入，以 `=` 開頭的 title 會被 Excel 當成公式。含 C0 控制字元的 title 還會讓之後每次涵蓋那一列的匯出都回 500。opus 在拋棄式環境重現了這兩個結果。
+
+**採納的 15 項。** 一項一個 commit。
+
+- 匯出（`4de2406`）。每個文字值寫成文字儲存格，`Title` 在 schema 邊界拒絕 C0 控制字元，匯出失敗時清掉暫存檔。
+- 匯入檔案層級的錯誤（`4274f7a`）。巢狀 JSON、超過 12 位的整數、沒有資料列的檔案都回檔案層級 422。
+- 匯入的 transaction（`050b237`）。成功路徑先寫 SUCCEEDED 的 batch，再寫資料列與稽核，一次 commit。`create_records()` 不再自己 commit，由呼叫端決定交易邊界。原本 batch 與資料列分兩段 commit，中間有空檔，三位 reviewer 都指出。
+- 錯誤分類（`ef93f5a`）。暫時錯誤清單加入八個 errno。
+- 索引（`eeaafb6`）。migration `0002` 新增四個索引，涵蓋 `system_logs`、`traffic_records.observed_at` 與 `users`。
+- `/admin/system`（`8e6552c`）。各表筆數快取 10 秒。
+- 管理者權限的新鮮度（`4acb905`）。`update_user()` 鎖定之後確認操作者仍是有效 ADMIN，否則回 403。
+- 稽核事件名稱（`eb8fe19`）。`record_event()` 拒絕 `AuditEvent` 以外的名稱。
+- Analytics 頁預設最近 24 小時（`b36ebd7`）。
+- 上傳大小（`8441129`）。`Content-Length` 超過上限時，在讀 body 之前回 413。
+- 冪等碰撞（`9c739cb`）。Writer 遇到被非 SIMULATOR 列佔用的 `event_id` 時記 WARNING。
+- `observed_at`（`f35e0fe`）。拒絕 Unix time 數字。
+- M04 頁面測試（`e672883`）與覆蓋率（`7a92d3b`）。
+- 文件（`bcaf2eb`）。architecture 的行號規則、README 已知限制、review log 的 R-007 與 R-008。
+
+**驗證。** coordinator 驗證的結果是 pytest 394 passed（修正前 339，新增 55 個），frontend 17 tests（原本 11 個），ruff 乾淨，migration `0002` 的 downgrade、upgrade 與 `alembic check` 都乾淨。用 curl 驗證的項目是 `=HYPERLINK` 的 title 匯出後是文字儲存格，含 `\x01` 的 title 回 422，巢狀 JSON 回 422，只有標頭的 CSV 回 422，6 MB 的上傳回 413，自己降級回 422。owner 另外逐 commit 跑了 pytest，349 到 394 只增不減。owner 報告的 mutation 是 43 個，42 個被抓到，這個數字是 owner 自己報的，沒有被獨立重跑。
+
+**保留「最後一個有效 ADMIN」規則的決定。** 加上操作者檢查與「不能動自己」之後，這條規則在 API 上已經走不到。owner 拿掉它做 mutation，29 個測試仍通過，所以那個 mutation 存活。owner 把這個選擇交給 coordinator。coordinator 決定保留，理由是 ADR-002 明文列出這條規則，保留只多兩行程式，而且兩個 integration test 現在斷言至少留下一個有效 ADMIN。
+
+**owner 回報的其他限制。** 「關閉 workbook」照字面做沒有效果，真正刪暫存檔的是 openpyxl 內部 sheet writer 的 `cleanup()`，程式因此用到 openpyxl 的私有屬性。C0 範圍包含 tab 與換行，所以 title 現在不能含這兩個字元。413 早於認證，沒有 token 的超大上傳拿到 413，不是 401。
+
+**合併。** `bcaf2eb`，06:11。修正輪共 15 個 commit，37 個檔案，新增約 962 行、刪除 156 行。
+
 ## 6. 多模型審查
 
 ### 6.1 做了什麼
 
 審查用 `interrogate` 技能。每次三位 reviewer，模型各自不同（opus、fable、sonnet），唯讀，各自獨立。三位的審查結果由 coordinator 合成一份 synthesis。
 
-| | M02（`252d83a..b8faf46`） | M03（`964ea67..7d8916f`） |
-|---|---|---|
-| opus（A） | 14 項（5 warning、9 nit） | 12 項（2 critical、5 warning、5 nit） |
-| fable（B） | 11 項（4 warning、7 nit） | 14 項（1 critical、5 warning、8 nit） |
-| sonnet（C） | 15 項（7 warning、8 nit） | 16 項（聲稱 3 項 critical、10 warning、3 nit） |
-| synthesis 的處置 | 16 採納、5 考慮、4 記錄、1 駁回 | 16 採納、2 考慮、2 記錄、2 駁回 |
+| | M02（`252d83a..b8faf46`） | M03（`964ea67..7d8916f`） | M04 與 M05（`6fd52c2..2798239`） |
+|---|---|---|---|
+| opus（A） | 14 項（5 warning、9 nit） | 12 項（2 critical、5 warning、5 nit） | 14 項（1 critical、7 warning、6 nit） |
+| fable（B） | 11 項（4 warning、7 nit） | 14 項（1 critical、5 warning、8 nit） | 18 項（8 warning、10 nit） |
+| sonnet（C） | 15 項（7 warning、8 nit） | 16 項（聲稱 3 項 critical、10 warning、3 nit） | 11 項（7 warning、4 nit） |
+| synthesis 的處置 | 16 採納、5 考慮、4 記錄、1 駁回 | 16 採納、2 考慮、2 記錄、2 駁回 | 15 採納、3 考慮、2 記錄、0 駁回 |
 
 M03 的 sonnet 聲稱的 critical 與最後採納的 critical 不是同一組。採納的三項是 errno 分類、commit timeout、generator 停止。sonnet 的 poison quarantine 項被駁回（見 6.3）。
 
@@ -356,6 +390,8 @@ M02 一致採納（3/3）：Argon2 移出 event loop、一個 503 handler、`WWW
 
 M03 一致採納（3/3）：generator 停止、慢 client、關閉時的 back-off。單一模型但已用執行證明：errno 分類（opus 在純 Python 跑 asyncmy 例外）與關閉後殘留事件的競爭（fable 用真實類別重現）。
 
+M04 與 M05 的共識地圖。三位都提出的有六項：匯出的公式注入、巢狀 JSON 造成 500、errno 缺口、匯入的 transaction 空檔、缺少索引、每次 rerun 都做 `COUNT(*)`。兩位提出的有四項：操作者權限的新鮮度檢查、上傳大小檢查太晚、空檔案被當成功、控制字元讓匯出失敗。只有一位提出但便宜又具體而被採納的有五項：`AuditEvent` 轉換、`observed_at` 的 epoch 數字、Analytics 的預設時間範圍、M04 頁面測試、冪等碰撞的 log。
+
 三位 reviewer 都確認核心規則成立。M02 是 HS256 固定、必要 claim、角色由 DB 決定、越權回 404、登入失敗稽核先於 401。M03 是沒有人在取消時發現容量洩漏，accept-before-broadcast 與 commit 後才 release 都成立。
 
 ### 6.3 考慮、記錄與駁回
@@ -364,17 +400,23 @@ M03 一致採納（3/3）：generator 停止、慢 client、關閉時的 back-of
 
 **M02 駁回。** sonnet 質疑 `/auth/register` 是否該存在。駁回理由是題目的功能需求 1 要求使用者註冊，ADR-002 也有規定。
 
+**M04 與 M05 考慮與記錄。** 考慮（不在這一輪）三項。重複的 `Page[T]`、時間區間驗證與 count 加 offset 的輔助函式；10,000 列匯入的 round trip 次數，只有推論，要在 stack 上量一次；1020 的獨立訊息與 Records 頁重送前重新讀取。記錄但不修兩項。CSV 多行引號欄位的行號指向該筆記錄的最後一行，已寫進 architecture §5.3。frontend 的 5 秒逾時早於 backend 的 10 秒 `read_timeout`，使用者可能在慢查詢時重送。
+
+**M04 與 M05 駁回。** 沒有。三個模型提出的 43 項裡，沒有一項被駁回。
+
 **M03 駁回。** 兩項。poison batch 的 bisect 與隔離，理由是 ADR-001 已決定永久錯誤讓 writer 停下等人處理，並把隔離列為 open item。分類修好之後，只有真的 poison 才會走到這條路。分頁關閉造成的孤兒 receiver，理由是 ADR-003 明確接受並用 `WS_MAX_CONNECTIONS` 限制。
 
 ### 6.4 審查的價值與限制
 
 審查找到的東西，owner 自己的 mutation check 與驗證沒有找到。M02 的 Argon2 阻塞與 M03 的 commit timeout 都是例子。M03 的 timeout 項是 fable 指出：asyncmy 的 `read_timeout` 是 None，被黑洞的連線會讓 writer 停在 IN_FLIGHT 13 到 30 分鐘以上，而 `test_health.py` 還有一個測試把「buffer 滿加 IN_FLIGHT」釘成 HEALTHY。
 
-限制有兩個。第一，M04 與 M05 沒有送審，不知道它們會被找出什麼。第二，三個模型都沒有瀏覽器，所以 UI 的實際外觀沒有被任何人審過。
+M04 與 M05 的審查找到一個 critical，是匯出的公式注入與控制字元造成的 500。owner 的 13 個與 18 個 mutation 都沒有碰到這一項，原因是 mutation 只改壞已存在的規則，而這項問題是缺了一條規則（推論）。
+
+限制有兩個。第一，M04 與 M05 在第一次驗收之後才送審，所以驗收表要重跑一次（第 7.2 節）。審查早一點做，就不會有兩次驗收。第二，三個模型都沒有瀏覽器，所以 UI 的實際外觀沒有被任何人審過。
 
 ## 7. 驗收結果
 
-驗收者是 sonnet，在 `2798239` 的 detached worktree 上跑。它在乾淨 volume 上起一個 compose stack，`.env` 由 `.env.example` 產生並換上新的 JWT secret。原始輸出與腳本在 `accept-scratch/`。
+以下是第一次驗收。驗收者是 sonnet，在 `2798239` 的 detached worktree 上跑。第二次驗收在 `bcaf2eb` 上重跑，見 7.2。它在乾淨 volume 上起一個 compose stack，`.env` 由 `.env.example` 產生並換上新的 JWT secret。原始輸出與腳本在 `accept-scratch/`。
 
 | ID | 狀態 | 證據摘要 |
 |---|---|---|
@@ -401,11 +443,11 @@ M03 一致採納（3/3）：generator 停止、慢 client、關閉時的 back-of
 
 ### 7.1 要誠實說的幾點
 
-**CI-01 沒有執行。** workflow 在 `.github/workflows/ci.yml`，只在本機跑過其中的 ruff 命令。
+**CI-01 沒有執行。** workflow 在 `.github/workflows/ci.yml`，第一次驗收時只在本機跑過其中的 ruff 命令。之後每個 run step 都在本機重放過（第 7.3 節），但 GitHub Actions 本身還沒有執行。
 
 **WS-02 有一個 flake。** 第一次（冷啟動）執行時，`AppTest` 在 10 秒逾時，11 個測試花了 25.9 秒。之後兩次 rerun 在 0.6 到 0.7 秒內通過，另外 20 次 live rerun 也都成立。驗收者把它記為 cold-start flake，沒有重現。README 也記下這件事，逾時之後已改為 30 秒，冷啟動執行沒有再驗證。M05 owner 在主機上第一次跑前端頁面測試時也看過同一個現象（第 5.5 節），兩份紀錄互相呼應，但原因都沒有被證實。
 
-**DEP-03 只驗了一半。** 舊 volume 缺 `traffic_test` 的那一半沒有跑。
+**DEP-03 只驗了一半。** 舊 volume 缺 `traffic_test` 的那一半沒有跑。這一半之後由 DEP-03b 演練補上（第 7.4 節）。
 
 **其他只做到一部分的案例。** AUTH-04 的 token 過期 → 4401 只由單元測試覆蓋，live 只驗了無 token 的 4401 與 `status`。BUF-02 的 live 驗證只看到 5 秒觸發，100 筆觸發由單元測試覆蓋。WS-01 以時間差驗證（WS 事件先收到、DB 約 6.5 秒後才看得到），Writer 沒有被暫停。DEP-01 的登入走 `/auth/token` API，不是瀏覽器 UI。
 
@@ -420,6 +462,30 @@ M03 一致採納（3/3）：generator 停止、慢 client、關閉時的 back-of
 **驗收表有 20 列，不是 19 列。** 19 個案例加 CI-01。README 的狀態表與 testing.md 的 ID 一一對應。
 
 **MANUAL 項目。** 這份驗收沒有任何被標成 MANUAL 的列。testing.md 的「手動 / 故障」清單中沒有執行的項目是兩個：`docker compose kill api` 後的遺失邊界展示，以及乾淨 clone 後在瀏覽器以三個帳號走完所有頁面。
+
+### 7.2 第二次驗收（`bcaf2eb`）
+
+**為什麼重跑。** 修正輪在第一次驗收之後改了匯入、匯出、管理與 schema 的程式，驗收證據必須對應交付的 commit。coordinator 在 06:11 啟動，結果在 06:20，合併為 `f45311a`。
+
+**結果。** 19 個案例 PASS，CI-01 NOT RUN，0 FAIL。流程與第一次相同，在 detached worktree 上用單一 compose stack 照 testing.md 的表依序執行，結束時 `down -v` exit 0，沒有留下容器或 volume。
+
+**新增的檢查。** 匯入第一個 title 是 `=HYPERLINK("http://evil","x")` 的檔案回 201，存下的 title 等於那段文字。匯出的 xlsx 的 sheet 沒有 `<f>` 元素，那個儲存格的 data type 是 `s`，是文字。title 含 `\x01` 的匯入回 422 並指出第 3 列，筆數不變。6 MB 的上傳回 413 `PAYLOAD_TOO_LARGE`。
+
+**數字的變化。** RETRY-01 停 DB 31 秒（22:14:47 停、22:15:18 啟），停機後 58 秒回 HEALTHY。之前 `count(*)` 與 `count(distinct event_id)` 皆 263，之後皆 494。WS client 在 75 秒內收到 226 則不重複事件，沒有超過 5 秒的間隔。BUF-01 取了 255 個樣本，恆等式違反 0 次，最大 `total_uncommitted` 是 180。BUF-02 看到 35 個不同的 `last_commit_at`。WS-02 是 17 個前端測試。
+
+**這一輪沒有做的事。** `observed_at` 的 epoch 數字被拒絕，只由單元測試覆蓋，驗收腳本在那一步之前中止。AUTH-04 的 token 過期與 BUF-02 的 100 筆觸發仍只由單元測試覆蓋。WS-02 沒有重做真實 api 上的 20 次 rerun。IMP-01 的第一次嘗試回 409，因為檔案的第 14 到 16 列帶有固定 `event_id`，驗收者把這三個 id 清空後才匯入成功，這與第一次驗收的發現一致。DEP-03b 沒有重跑，證據仍是 `f31f41f`。
+
+### 7.3 CI 步驟重放
+
+CI-01 要等 GitHub 上的 Actions 執行，所以 coordinator 在 05:11 驗證了一個替代做法。`replay.py` 解析 `ci.yml`，在本機依序執行每個 run step。所有步驟都 exit 0，包含 `ruff check`、`ruff format --check`、frontend 的 `unittest`、建立 `.env`、`docker compose up --build -d`、等待 `/health/ready`、api 容器內的 `pytest -q` 與 `down -v`。這次重放發生在修正輪之前（commit `a9aa5ba`），pytest 是 339 passed。
+
+重放與真實 runner 的差別有幾處。`actions/checkout` 用現成的 worktree，`setup-uv` 用 PATH 上的 uv 而沒有檢查版本，Docker 是 Podman 上的 docker CLI，Python 3.12 由 uv 提供。所以 CI-01 仍是 NOT RUN。剩下的風險只在 runner 環境。
+
+### 7.4 DEP-03b 演練
+
+第一次驗收沒有驗到「既有 volume 沒有 `traffic_test`」這一半，coordinator 在 05:03 派出演練（見 8.5），05:06 驗證並合併為 `44ff5d2`。
+
+結果是 PASS。用一個不掛載 `db/init` 的 override 在 `db-data` 上啟動，`SHOW DATABASES` 只有 `traffic`。同一個 volume 上換回正常的 stack，`traffic_test` 仍然不存在，`pytest` 在 setup 階段以 `1044 Access denied` 失敗。`down -v` 之後重新啟動，`traffic_test` 存在，`/health/ready` 回 200，16 個 health 測試通過。這證明已有 volume 的環境要 `docker compose down -v` 重建，README 也這樣寫。
 
 ## 8. 砍掉、延後、未驗證
 
@@ -438,13 +504,13 @@ M03 一致採納（3/3）：generator 停止、慢 client、關閉時的 back-of
 `followups.md` 的項目，其中標明 README 已知限制的已寫進 README。
 
 - 登入吞吐量受 CPU 限制（每次 Argon2 verify 約 28 ms），rate limit 是 ADR-002 的 open item。
-- `IMPORT_MAX_BYTES` 在 Starlette 已緩衝整個上傳之後才檢查，要擋在邊緣需要 reverse proxy。
-- `import_batches` 的 commit 若在資料 commit 之後失敗，client 看到 503，重送沒有 `event_id` 的列會重複。
+- `IMPORT_MAX_BYTES` 在 Starlette 已緩衝整個上傳之後才檢查。修正輪加了 `Content-Length` 的 413 檢查，但 chunked 上傳要擋在邊緣仍需要 reverse proxy。
+- 已解決。`import_batches` 的 commit 在資料 commit 之後失敗的空檔，由修正輪的單一 transaction（`050b237`）關閉。
 - Streamlit 側欄對所有角色都列出 Admin 頁。非 admin 只看到提示，API 一律 403。隱藏它要把 `app.py` 改成 `st.navigation`。
-- `system_logs` 沒有 `created_at` 與 `event_type` 的索引，`/admin/logs` 全表掃描。
+- 已解決。`system_logs` 的索引由 migration `0002`（`eeaafb6`）加入。
 - 1020 snapshot conflict 回 503「Database unavailable」，409 會更精確。
-- `/admin/system` 每次對五張表 `count(*)`，資料量到數百萬列時可能接近 10 秒的 `read_timeout`。
-- Admin 的 `PATCH` 會鎖整張 `users` 表（`role` 沒有索引），持續時間是毫秒等級。
+- `/admin/system` 每次對五張表 `count(*)`，資料量到數百萬列時可能接近 10 秒的 `read_timeout`。修正輪加了 10 秒快取，降低重複次數，沒有降低單次成本。
+- Admin 的 `PATCH` 會鎖整張 `users` 表，持續時間是毫秒等級。migration `0002` 加了 `users (role, is_active)` 的索引，這項是否因此縮小鎖定範圍，沒有量測。
 - asyncmy 的 `read_timeout` 等於 `COMMIT_TIMEOUT_SECONDS`（10 秒），對共用 engine 上的每個查詢都有效。
 - 健康檢查用 `CMD-SHELL`，沒有在 Docker Engine 上驗證。
 - compose 的 api image 含 dev 依賴（`INSTALL_DEV=true`）。
@@ -468,6 +534,14 @@ M03 一致採納（3/3）：generator 停止、慢 client、關閉時的 back-of
 
 **row lock 的延後理由是錯的。** 當初以「單 worker」為由延後 row lock，獨立審查指出單 worker 仍會在 `await` 之間交錯：並行 DELETE 可能回 500，稽核的 before 值可能過期。這個限制現在寫在 README 的已知限制。
 
+### 8.5 stop-hook 事件
+
+第一次交付後，coordinator 在 05:01 寫下「run complete」。05:03，Claude Code 的 stop hook 檢查列出尚未完成的事項。hook 要求處理的是 CI-01 NOT RUN、DEP-03 只驗一半、沒有人用瀏覽器走過畫面、`how` 與 `architect` 被略過、以及文件需要擁有者確認。
+
+這幾項裡，當下可以在本機關閉的有兩項。DEP-03b 派出演練後在 05:06 證明（第 7.4 節）。CI 的 run step 在 05:11 重放完成（第 7.3 節）。檢查仍有未關閉的項目時，coordinator 又派出 M04 與 M05 的審查（第 5.8 節）。
+
+只有擁有者能做的有三項。CI-01 需要擁有者 push 到 GitHub，瀏覽器走查是擁有者自己定的規則，README 中「開發方式」那一段的第一人稱是只有作者能確認的。`how` 與 `architect` 是依 playbook 的「略過並寫理由」規則略過，因為 ADR 已固定設計，決策紀錄記下理由，沒有補做。
+
 ## 9. 學到的事
 
 每一條都對應到紀錄裡的一個時刻。
@@ -483,6 +557,8 @@ M03 一致採納（3/3）：generator 停止、慢 client、關閉時的 back-of
 9. **在做的時候記錄，不要事後補。** 決策紀錄開頭多列的時間戳都擠在 23:37 到 23:39（含一列 `pending` 與一列取代它的列），這代表它們是批次寫入的，不是事件發生時寫的（推論）。設計文件的時間完全沒有記錄，所以最重要的前置工作無法計時。
 10. **獨立驗收者會看到 owner 與 coordinator 都沒看到的東西。** 驗收者是唯一重跑同一份 CSV 而發現第 14 到 16 列的固定 id。它也把第一次 RETRY-01 的遺失輸出標成「不採用」，而不是拿來湊證據。獨立性來自它沒有參與寫程式。
 11. **要誠實記錄沒做的事。** 瀏覽器、Docker Engine、CI、乾淨 clone 都沒做，而且 README 的已知限制與 testing.md 都寫了。這讓交付時的說法與實際相符。
+12. **每個 milestone 都要在驗收之前審查，不是之後。** M04 與 M05 在第一次驗收與文件交付之後才審查，找到匯出的公式注入這個 critical，修正又改了匯入、匯出、管理與 schema 的程式，所以驗收要重跑，文件的數字要全部更新。mutation 檢查沒有抓到它，因為那是缺少的規則，不是被改壞的規則。
+13. **新的保護規則可能讓舊規則走不到，mutation 會顯示出來。** 操作者新鮮度檢查加上「不能動自己」之後，「最後一個有效 ADMIN」的程式在 API 上無法觸發，拿掉它的 mutation 存活。owner 沒有自行刪掉，而是回報，coordinator 依 ADR-002 決定保留。存活的 mutation 是一個要人決定的訊號，不一定是測試的缺口。
 
 ## 10. 附錄
 
@@ -494,16 +570,16 @@ M03 一致採納（3/3）：generator 停止、慢 client、關閉時的 back-of
 | `todo.md` | Feature playbook 的八個步驟，哪些略過與原因，以及 milestone 的勾選清單。 |
 | `briefs/` | 每個 owner 收到的任務說明（m01 到 m05、兩個修正輪、accept、m06 三份）。 |
 | `reports/` | 每個 owner 的 report，含預計變更範圍、驗證命令與 exit code、NOT RUN 與風險。 |
-| `reviews/` | 每次 interrogate 的三份 reviewer 輸出與一份 synthesis（M02、M03）。 |
-| `acceptance.md` | 獨立驗收者的完整證據。 |
+| `reviews/` | 每次 interrogate 的三份 reviewer 輸出與一份 synthesis（M02、M03、M04 與 M05），另有對決策紀錄本身的審查。 |
+| `acceptance.md`、`acceptance-2.md` | 兩次獨立驗收的完整證據。 |
 | `followups.md` | owner 回報、留給 README 與後續工作的項目。 |
 | `evidence/` | 修正輪與 M04、M05 的驗證腳本與輸出。 |
-| `accept-scratch/` | 驗收者的暫存腳本與原始輸出。 |
+| `accept-scratch/`、`accept2-scratch/` | 兩次驗收的暫存腳本與原始輸出。 |
 | `*.done` | owner 完成的標記檔，供 coordinator 偵測。 |
 
 ### 10.2 commit 清單
 
-以 `git log` 為準，依 milestone 分組。`main` 在 `9154d72` 是 89 個 commit，另加本文件與更正兩個 commit。
+以 `git log` 為準，依 milestone 分組。`main` 在 `9154d72` 是 89 個 commit，另加本文件與更正兩個 commit。之後又有 29 個 commit，`main` 現在是 `f45311a`，共 120 個。
 
 #### 設計文件（base）（1）
 
@@ -624,3 +700,44 @@ M03 一致採納（3/3）：generator 停止、慢 client、關閉時的 back-of
 #### 本文件與更正
 
 - `405af99` docs: correct the commit-message note and the timeline label
+
+#### 誠實性修正（11）
+
+- `7f583de` docs(readme): state that nothing ran on Docker Engine or GitHub Actions
+- `0912b24` docs(readme): add the JWT secret step to the quick start
+- `282a35c` docs(readme): align the delivery status table with the testing IDs and partial evidence
+- `2632500` docs(testing): make the evidence column say which half of a case ran
+- `8145e9c` docs(readme): name the AI coordinator as the per-milestone reviewer
+- `02261f9` docs(readme): list the concurrency, outage and crash-loss limits
+- `1c4b730` docs: record M06 as merged in the plan results
+- `5c2f927` docs: fix the human and agent roles on slide 9
+- `c5be1c9` docs: add evidence provenance and partial-case notes to the process record
+- `0004d47` docs: drop the stray follow-up wording from the M06 plan row
+- `f31f41f` test(frontend): raise the AppTest timeout to 30 seconds
+
+#### DEP-03b 與 CI 重放的證據（2）
+
+- `44ff5d2` docs(testing): record the existing-volume half of DEP-03
+- `a9aa5ba` docs(testing): record the local replay of the CI steps
+
+#### M04 與 M05 審查後的修正輪（15）
+
+- `4de2406` fix(export): write text cells, reject control characters in titles and clean up a failed export
+- `4274f7a` fix(imports): reject nested JSON, long integers and empty files at file level, name masked duplicates and bound field names
+- `050b237` fix(imports): commit an accepted file's batch, rows and audit row in one transaction
+- `ef93f5a` fix(db): treat packet, read-only, interrupted-query and statement-timeout errnos as transient
+- `eeaafb6` feat(db): index system_logs, traffic_records.observed_at and the active-admin lookup
+- `8e6552c` perf(admin): cache the system table counts for 10 seconds in the api and on the Admin page
+- `4acb905` fix(admin): refuse a user change from an admin demoted after authentication and release no-op locks
+- `eb8fe19` fix(audit): refuse event types outside AuditEvent and type the level as one shared Literal
+- `b36ebd7` fix(frontend): default the Analytics window to the last 24 hours and test the trend bucket cap
+- `8441129` feat(imports): answer 413 before reading an upload whose Content-Length is over the limit
+- `9c739cb` feat(writer): warn when a simulator event_id is already stored by another source
+- `f35e0fe` fix(records): reject Unix-time numbers where an ISO 8601 instant is expected
+- `e672883` test(frontend): cover the Records and Analytics pages with AppTest
+- `7a92d3b` test(imports): cover the 100-error cap and that an import never touches the buffer or the sockets
+- `bcaf2eb` docs: record the CSV row numbering, the export and title rules and the M04/M05 multi-model review
+
+#### 第二次驗收的證據（1）
+
+- `f45311a` docs(testing): refresh acceptance evidence after the review fixes
