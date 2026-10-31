@@ -1,6 +1,7 @@
 import asyncio
 import uuid
 from datetime import UTC, datetime, timedelta
+from typing import NamedTuple
 
 import jwt
 from argon2 import PasswordHasher
@@ -48,8 +49,13 @@ def create_access_token(user_id: int, role: Role, now: datetime | None = None) -
     return jwt.encode(claims, settings.jwt_secret_key.get_secret_value(), algorithm=ALGORITHM)
 
 
-def decode_access_token(token: str) -> int:
-    """Return the user id in a valid token. The role claim is ignored: callers reload the user."""
+class AccessClaims(NamedTuple):
+    user_id: int
+    expires_at: datetime
+
+
+def decode_access_token(token: str) -> AccessClaims:
+    """Verify the token. The role claim is ignored: callers reload the user."""
     try:
         claims = jwt.decode(
             token,
@@ -57,7 +63,7 @@ def decode_access_token(token: str) -> int:
             algorithms=[ALGORITHM],
             options={"require": ["sub", "role", "exp", "iat", "jti"]},
         )
-        return int(claims["sub"])
+        return AccessClaims(int(claims["sub"]), datetime.fromtimestamp(claims["exp"], UTC))
     except jwt.ExpiredSignatureError as exc:
         raise TokenExpiredError("Token has expired.") from exc
     except (jwt.InvalidTokenError, ValueError) as exc:

@@ -10,11 +10,13 @@ from httpx import ASGITransport, AsyncClient, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
+from app.api.deps import get_pipeline
 from app.bootstrap import ensure_services
 from app.core.security import hash_password
 from app.db import get_session, make_engine
 from app.main import app
 from app.models import ApiService, Base, Role, User
+from app.pipeline import Pipeline
 
 TEST_DATABASE_URL = os.environ["TEST_DATABASE_URL"]
 PASSWORD = "correct-horse-battery"
@@ -77,6 +79,18 @@ async def services(session_factory: async_sessionmaker[AsyncSession]) -> dict[st
         await ensure_services(session)
         rows = await session.execute(select(ApiService.slug, ApiService.id))
         return dict(rows.all())
+
+
+@pytest.fixture
+async def pipeline(
+    session_factory: async_sessionmaker[AsyncSession], services: dict[str, int]
+) -> AsyncIterator[Pipeline]:
+    """A started pipeline on the test database. The simulator is off: tests call tick()."""
+    pipeline = Pipeline.create(session_factory, simulator_enabled=False)
+    app.dependency_overrides[get_pipeline] = lambda: pipeline
+    await pipeline.start()
+    yield pipeline
+    await pipeline.stop()
 
 
 @dataclass(frozen=True)
