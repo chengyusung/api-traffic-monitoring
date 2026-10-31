@@ -31,7 +31,9 @@ class RecordUpdate(BaseModel):
     observed_at: UTCInstant | None = None
 
     @model_validator(mode="after")
-    def reject_nulls(self) -> Self:
+    def reject_empty_and_nulls(self) -> Self:
+        if not self.model_fields_set:
+            raise ValueError("send at least one of title, value, observed_at")
         if nulls := sorted(name for name in self.model_fields_set if getattr(self, name) is None):
             raise ValueError(f"cannot be null: {', '.join(nulls)}")
         return self

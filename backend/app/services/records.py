@@ -1,6 +1,7 @@
 import uuid
 from collections.abc import Sequence
 
+from pydantic_core import to_jsonable_python
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import NotFoundError, UnprocessableError
@@ -74,25 +75,29 @@ async def update_record(
 ) -> TrafficRecord:
     record = await get_record(session, record_id)
     assert_can_modify(record, actor)
-    fields = changes.model_dump(exclude_unset=True)
-    before = {"value": record.value, "is_anomaly": record.is_anomaly}
-    for name, value in fields.items():
+    after = {
+        name: value
+        for name, value in changes.model_dump(exclude_unset=True).items()
+        if getattr(record, name) != value
+    }
+    if not after:
+        return record
+    before = {name: getattr(record, name) for name in after}
+    for name, value in after.items():
         setattr(record, name, value)
-    if "value" in fields:
+    if "value" in after:
         # The record's own snapshot, never the service's current threshold.
-        record.is_anomaly = is_anomaly(record.value, record.threshold_applied)
-        audit.record_event(
-            session,
-            "record.value_updated",
-            f"record {record.id} value {before['value']} -> {record.value}",
-            actor_id=actor.id,
-            target_type="traffic_record",
-            target_id=record.id,
-            context={
-                "before": before,
-                "after": {"value": record.value, "is_anomaly": record.is_anomaly},
-            },
-        )
+        before["is_anomaly"] = record.is_anomaly
+        record.is_anomaly = after["is_anomaly"] = is_anomaly(record.value, record.threshold_applied)
+    audit.record_event(
+        session,
+        "record.updated",
+        f"record {record.id} updated: {', '.join(before)}",
+        actor_id=actor.id,
+        target_type="traffic_record",
+        target_id=record.id,
+        context=to_jsonable_python({"before": before, "after": after}),
+    )
     await session.commit()
     return record
 

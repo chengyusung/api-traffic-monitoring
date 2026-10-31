@@ -288,15 +288,72 @@ async def test_value_edit_recomputes_with_the_records_own_threshold(
     assert anomaly.json()["is_anomaly"] is True
     async with session_factory() as session:
         logs = await session.scalars(
-            select(SystemLog)
-            .where(SystemLog.event_type == "record.value_updated")
-            .order_by(SystemLog.id)
+            select(SystemLog).where(SystemLog.event_type == "record.updated").order_by(SystemLog.id)
         )
         contexts = [log.context for log in logs]
     assert contexts[-1] == {
         "before": {"value": 75, "is_anomaly": False},
         "after": {"value": 81, "is_anomaly": True},
     }
+
+
+async def update_audits(session_factory: async_sessionmaker[AsyncSession]) -> list[Any]:
+    async with session_factory() as session:
+        rows = await session.scalars(
+            select(SystemLog.context)
+            .where(SystemLog.event_type == "record.updated")
+            .order_by(SystemLog.id)
+        )
+        return list(rows)
+
+
+async def test_patch_with_an_empty_body_is_422(
+    client: AsyncClient,
+    services: dict[str, int],
+    user_a: Identity,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    record_id = await insert_record(session_factory, services["payment"], user_a.id)
+
+    response = await client.patch(f"{RECORDS}/{record_id}", json={}, headers=user_a.headers)
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "VALIDATION_ERROR"
+
+
+async def test_patch_audits_each_changed_field_with_before_and_after(
+    client: AsyncClient,
+    services: dict[str, int],
+    user_a: Identity,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    record_id = await insert_record(session_factory, services["payment"], user_a.id, title="old")
+    changes = {"title": "new", "value": 50, "observed_at": "2026-10-31T16:05:00+08:00"}
+
+    response = await client.patch(f"{RECORDS}/{record_id}", json=changes, headers=user_a.headers)
+
+    assert response.status_code == 200
+    assert await update_audits(session_factory) == [
+        {
+            "before": {"title": "old", "observed_at": "2026-10-31T08:00:00Z"},
+            "after": {"title": "new", "observed_at": "2026-10-31T08:05:00Z"},
+        }
+    ]
+
+
+async def test_patch_that_changes_nothing_writes_no_audit_row(
+    client: AsyncClient,
+    services: dict[str, int],
+    user_a: Identity,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    record_id = await insert_record(session_factory, services["payment"], user_a.id)
+    same = {"title": "seeded", "value": 50, "observed_at": T0.isoformat()}
+
+    response = await client.patch(f"{RECORDS}/{record_id}", json=same, headers=user_a.headers)
+
+    assert response.status_code == 200
+    assert await update_audits(session_factory) == []
 
 
 async def test_delete_is_audited(
