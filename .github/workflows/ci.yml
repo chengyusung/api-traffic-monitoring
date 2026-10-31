@@ -15,6 +15,18 @@ jobs:
       - run: uvx ruff@0.17.3 check backend frontend
       - run: uvx ruff@0.17.3 format --check backend frontend
 
+  frontend-test:
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.8.22"
+      # Not in the frontend image by design, so they run on the runner.
+      - name: Frontend unit tests
+        run: cd frontend && uv sync --frozen && uv run python -m unittest
+
   test:
     needs: lint
     runs-on: ubuntu-latest
