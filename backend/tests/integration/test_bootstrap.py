@@ -3,9 +3,23 @@ from pydantic import SecretStr, ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.bootstrap import bootstrap_admin, ensure_services, seed_demo
+from app.bootstrap import (
+    DEMO_RECORDS,
+    bootstrap_admin,
+    ensure_services,
+    seed_demo,
+    seed_demo_records,
+)
 from app.core.security import verify_password
-from app.models import ApiService, Role, User
+from app.models import (
+    ApiService,
+    ImportBatch,
+    ImportStatus,
+    RecordSource,
+    Role,
+    TrafficRecord,
+    User,
+)
 
 SECRET = SecretStr("bootstrap-pass-1")
 
@@ -106,3 +120,32 @@ async def test_seed_demo_is_idempotent_by_email(
             "user@example.com": Role.USER,
             "viewer@example.com": Role.VIEWER,
         }
+
+
+async def test_seed_demo_records_imports_the_sample_once_as_the_demo_user(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async with session_factory() as session:
+        await ensure_services(session)
+        await seed_demo(session, [(Role.USER, "User@Example.com", SECRET)])
+
+        batch_id = await seed_demo_records(session, "User@Example.com")
+        assert batch_id is not None
+        assert await seed_demo_records(session, "User@Example.com") is None
+
+    async with session_factory() as session:
+        batches = (await session.scalars(select(ImportBatch))).all()
+        owners = set(
+            (
+                await session.execute(
+                    select(TrafficRecord.source, User.email).join(
+                        User, TrafficRecord.created_by == User.id
+                    )
+                )
+            ).all()
+        )
+    assert [(b.id, b.filename, b.status) for b in batches] == [
+        (batch_id, "seed:sample_traffic.csv", ImportStatus.SUCCEEDED)
+    ]
+    assert batches[0].success_count == len(DEMO_RECORDS.read_text().splitlines()) - 1
+    assert owners == {(RecordSource.IMPORT, "user@example.com")}

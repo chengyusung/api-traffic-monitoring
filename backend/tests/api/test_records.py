@@ -40,6 +40,7 @@ async def insert_record(
     observed_at: datetime = T0,
     persisted_at: datetime | None = None,
     source: RecordSource = RecordSource.MANUAL,
+    threshold: int = 80,
 ) -> int:
     """A row as the simulator or another writer would leave it (created_by may be NULL)."""
     async with session_factory() as session:
@@ -52,8 +53,8 @@ async def insert_record(
             created_by=created_by,
             observed_at=observed_at,
             persisted_at=persisted_at or datetime.now(UTC),
-            threshold_applied=80,
-            is_anomaly=value > 80,
+            threshold_applied=threshold,
+            is_anomaly=value > threshold,
         )
         session.add(record)
         await session.commit()

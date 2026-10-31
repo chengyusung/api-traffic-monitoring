@@ -28,6 +28,8 @@ asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
 pythonpath = ["."]
+# tests/unit and tests/api both hold a test_analytics.py.
+addopts = ["--import-mode=importlib"]
 
 [dependency-groups]
 dev = [
