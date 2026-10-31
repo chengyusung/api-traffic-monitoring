@@ -24,6 +24,7 @@ TRANSIENT_ERRNOS = frozenset(
         2013,  # lost connection during query
         2055,  # lost connection at the system level
         1040,  # too many connections
+        1020,  # record changed since the snapshot (innodb_snapshot_isolation); like a deadlock
         1053,  # server shutdown in progress
         1205,  # lock wait timeout
         1213,  # deadlock

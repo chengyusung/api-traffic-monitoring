@@ -15,6 +15,7 @@ DB_ERRORS: dict[str, tuple[Callable[[], Exception], int, int | None]] = {
     "2013 lost connection": (lambda: server_error(2013), 503, 2013),
     "2003 cannot connect": (lambda: server_error(2003), 503, 2003),
     "1213 deadlock": (lambda: server_error(1213), 503, 1213),
+    "1020 snapshot conflict": (lambda: server_error(1020), 503, 1020),
     "invalidated connection": (
         lambda: exc.DBAPIError.instance(
             "SELECT 1",

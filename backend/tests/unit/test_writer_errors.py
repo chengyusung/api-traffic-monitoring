@@ -36,6 +36,7 @@ def test_a_bad_batch_is_permanent_even_when_asyncmy_calls_it_operational(errno: 
         2003,  # can't connect
         1213,  # deadlock
         1205,  # lock wait timeout
+        1020,  # record changed since the snapshot
         1062,  # duplicate key on the missing-only insert
     ],
 )
