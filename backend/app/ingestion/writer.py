@@ -112,7 +112,13 @@ class BatchWriter:
         self._held: list[IngestionEvent] = []
         self.state = WriterState.IDLE
         self.retry_count = 0
+        self.failed_attempts = 0
         self.last_commit_at: datetime | None = None
+
+    @property
+    def retrying(self) -> bool:
+        """The held batch failed at least once: still true while the next attempt is in flight."""
+        return self.failed_attempts > 0
 
     def stats(self) -> IngestionStats:
         held = len(self._held)
@@ -178,7 +184,6 @@ class BatchWriter:
     async def _persist(self, batch: list[IngestionEvent]) -> bool:
         """Commit the batch, retrying transient failures. False after a permanent failure."""
         self._held = batch
-        failures = 0
         while True:
             self.state = WriterState.IN_FLIGHT
             try:
@@ -199,15 +204,15 @@ class BatchWriter:
                         context={"error": type(exc).__name__, "batch_size": len(batch)},
                     )
                     return False
-                delay = self._backoff(failures)
-                failures += 1
+                delay = self._backoff(self.failed_attempts)
+                self.failed_attempts += 1
                 self.retry_count += 1
                 self.state = WriterState.RETRY_WAIT
                 logger.warning(
                     "batch commit failed; retrying",
                     extra={
                         "error": type(exc).__name__,
-                        "attempt": failures,
+                        "attempt": self.failed_attempts,
                         "batch_size": len(batch),
                         "retry_in_s": round(delay, 3),
                     },
@@ -217,6 +222,7 @@ class BatchWriter:
         self._held = []
         self.last_commit_at = utcnow()
         self.state = WriterState.IDLE
+        failures, self.failed_attempts = self.failed_attempts, 0
         if failures:
             logger.info(
                 "writer recovered", extra={"failed_attempts": failures, "batch_size": len(batch)}

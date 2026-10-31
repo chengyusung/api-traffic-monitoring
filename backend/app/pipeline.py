@@ -21,11 +21,10 @@ STATUS_POLL_S = 1.0
 
 
 def evaluate(
-    *, ready: bool, db_ok: bool, writer_state: WriterState, buffer_full: bool
+    *, ready: bool, db_ok: bool, writer_state: WriterState, retrying: bool, buffer_full: bool
 ) -> HealthState:
-    """architecture.md §9."""
+    """architecture.md §9. `retrying` holds from a batch's first failure until its commit."""
     writer_stopped = writer_state in (WriterState.UNAVAILABLE, WriterState.STOPPED)
-    retrying = writer_state is WriterState.RETRY_WAIT
     if not ready or writer_stopped or (buffer_full and retrying):
         return HealthState.UNAVAILABLE
     if not db_ok or retrying:
@@ -117,6 +116,7 @@ class Pipeline:
             ready=ready,
             db_ok=db_ok,
             writer_state=self.writer.state,
+            retrying=self.writer.retrying,
             buffer_full=self.buffer.is_full,
         )
 

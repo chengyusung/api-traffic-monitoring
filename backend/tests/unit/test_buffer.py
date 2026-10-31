@@ -12,6 +12,8 @@ from sqlalchemy.exc import DataError, OperationalError
 from app.ingestion.buffer import IngestionBuffer, IngestionEvent, WriterState
 from app.ingestion.writer import BatchWriter
 from app.models import RecordSource, SystemLog, TrafficRecord
+from app.pipeline import evaluate
+from app.schemas.realtime import HealthState
 
 FLUSH_S = 5.0
 
@@ -282,6 +284,40 @@ async def test_backoff_doubles_from_one_second_and_caps_at_thirty() -> None:
         await sessions.wait_for(lambda: len(sessions.committed) == 1)
 
     assert clock.sleeps == [1, 2, 4, 8, 16, 30, 30, 30]
+
+
+async def test_health_stays_degraded_from_the_first_failure_until_the_commit() -> None:
+    clock, sessions = FakeClock(), FakeSessions([db_down(), db_down()], hold=True)
+    buffer = IngestionBuffer(capacity=10, clock=clock)
+    await buffer.accept(event(1))
+    writer = make_writer(buffer, sessions, clock, batch_max_size=1)
+
+    def health() -> tuple[WriterState, HealthState]:
+        state = evaluate(
+            ready=True,
+            db_ok=True,
+            writer_state=writer.state,
+            retrying=writer.retrying,
+            buffer_full=False,
+        )
+        return writer.state, state
+
+    seen = [health()]
+    async with running(writer):
+        for attempt in (1, 2, 3):
+            await sessions.wait_for(lambda n=attempt: len(sessions.attempts) == n)
+            seen.append(health())
+            sessions.permits.release()
+        await sessions.wait_for(lambda: len(sessions.committed) == 1)
+        seen.append(health())
+
+    assert seen == [
+        (WriterState.IDLE, HealthState.HEALTHY),
+        (WriterState.IN_FLIGHT, HealthState.HEALTHY),  # first attempt
+        (WriterState.IN_FLIGHT, HealthState.DEGRADED),  # retry after one failure
+        (WriterState.IN_FLIGHT, HealthState.DEGRADED),  # retry after two failures
+        (WriterState.IDLE, HealthState.HEALTHY),  # committed
+    ]
 
 
 async def test_a_permanent_error_stops_the_writer_and_keeps_the_batch() -> None:

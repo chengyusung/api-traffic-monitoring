@@ -84,22 +84,35 @@ async def test_ready_is_degraded_503_with_full_body_when_db_is_unreachable(
 
 
 @pytest.mark.parametrize(
-    ("ready", "db_ok", "writer_state", "buffer_full", "expected"),
+    ("ready", "db_ok", "writer_state", "retrying", "buffer_full", "expected"),
     [
-        (True, True, WriterState.IDLE, False, HealthState.HEALTHY),
-        (True, True, WriterState.IN_FLIGHT, True, HealthState.HEALTHY),  # draining a backlog
-        (True, False, WriterState.IDLE, False, HealthState.DEGRADED),
-        (True, True, WriterState.RETRY_WAIT, False, HealthState.DEGRADED),
-        (True, False, WriterState.RETRY_WAIT, True, HealthState.UNAVAILABLE),
-        (False, True, WriterState.IDLE, False, HealthState.UNAVAILABLE),
-        (True, True, WriterState.UNAVAILABLE, False, HealthState.UNAVAILABLE),
-        (True, True, WriterState.STOPPED, False, HealthState.UNAVAILABLE),
+        (True, True, WriterState.IDLE, False, False, HealthState.HEALTHY),
+        (True, True, WriterState.IN_FLIGHT, False, True, HealthState.HEALTHY),  # draining a backlog
+        (True, False, WriterState.IDLE, False, False, HealthState.DEGRADED),
+        (True, True, WriterState.RETRY_WAIT, True, False, HealthState.DEGRADED),
+        (True, True, WriterState.IN_FLIGHT, True, False, HealthState.DEGRADED),  # a retry attempt
+        (True, False, WriterState.RETRY_WAIT, True, True, HealthState.UNAVAILABLE),
+        (True, True, WriterState.IN_FLIGHT, True, True, HealthState.UNAVAILABLE),
+        (False, True, WriterState.IDLE, False, False, HealthState.UNAVAILABLE),
+        (True, True, WriterState.UNAVAILABLE, False, False, HealthState.UNAVAILABLE),
+        (True, True, WriterState.STOPPED, False, False, HealthState.UNAVAILABLE),
     ],
 )
 def test_health_state_follows_architecture_section_9(
-    ready: bool, db_ok: bool, writer_state: WriterState, buffer_full: bool, expected: HealthState
+    ready: bool,
+    db_ok: bool,
+    writer_state: WriterState,
+    retrying: bool,
+    buffer_full: bool,
+    expected: HealthState,
 ) -> None:
     assert (
-        evaluate(ready=ready, db_ok=db_ok, writer_state=writer_state, buffer_full=buffer_full)
+        evaluate(
+            ready=ready,
+            db_ok=db_ok,
+            writer_state=writer_state,
+            retrying=retrying,
+            buffer_full=buffer_full,
+        )
         is expected
     )
