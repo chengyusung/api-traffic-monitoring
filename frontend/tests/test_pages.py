@@ -143,6 +143,63 @@ class AdminPageTest(unittest.TestCase):
         self.assertEqual([e.value for e in app.error], [REFUSAL])
 
 
+class RecordsPageTest(unittest.TestCase):
+    def fake_api(self) -> dict[str, mock.Mock]:
+        return fake_api(
+            self,
+            list_services=mock.Mock(return_value=[]),
+            list_records=mock.Mock(return_value={"items": [], "total": 0}),
+        )
+
+    def test_a_user_sees_the_create_edit_and_import_blocks(self) -> None:
+        self.fake_api()
+        app = page("2_Records.py", {**ADMIN, "role": "USER"})
+
+        app.run()
+
+        self.assertFalse(app.exception)
+        self.assertEqual(
+            [e.label for e in app.expander],
+            ["新增 record", "編輯 / 刪除（本頁可修改 0 筆）", "匯入 CSV / JSON"],
+        )
+
+    def test_a_viewer_sees_no_write_block(self) -> None:
+        self.fake_api()
+        app = page("2_Records.py", {**ADMIN, "role": "VIEWER"})
+
+        app.run()
+
+        self.assertFalse(app.exception)
+        self.assertEqual(len(app.expander), 0)
+        self.assertIn("VIEWER 只能查詢", app.caption[-1].value)
+
+    def test_the_list_call_carries_the_filters_sort_and_page(self) -> None:
+        fakes = self.fake_api()
+        app = page("2_Records.py", {**ADMIN, "role": "VIEWER"})
+        app.run()
+
+        app.selectbox(key="records-source").set_value("IMPORT")
+        app.text_input(key="records-q").set_value("checkout")
+        app.run()
+
+        token, params = fakes["list_records"].call_args.args
+        self.assertEqual(token, "token")
+        self.assertEqual(
+            params,
+            {
+                "service": None,
+                "source": "IMPORT",
+                "is_anomaly": None,
+                "start": None,
+                "end": None,
+                "q": "checkout",
+                "sort": "-observed_at",
+                "page": 1,
+                "page_size": 20,
+            },
+        )
+
+
 class AnalyticsPageTest(unittest.TestCase):
     def fake_api(self) -> dict[str, mock.Mock]:
         return fake_api(
@@ -165,6 +222,19 @@ class AnalyticsPageTest(unittest.TestCase):
         self.assertAlmostEqual(
             start, datetime.now(UTC) - timedelta(hours=24), delta=timedelta(minutes=1)
         )
+
+    def test_the_download_button_appears_once_the_export_returns_bytes(self) -> None:
+        fakes = self.fake_api()
+        app = page("3_Analytics.py", ADMIN)
+        app.run()
+        self.assertEqual(len(app.get("download_button")), 0)
+
+        app.button[0].click()
+        app.run()
+
+        self.assertFalse(app.exception)
+        fakes["export_xlsx"].assert_called_once()
+        self.assertEqual(len(app.get("download_button")), 1)
 
 
 if __name__ == "__main__":
