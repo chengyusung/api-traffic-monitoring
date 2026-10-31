@@ -92,6 +92,11 @@ class IngestionBuffer:
             self._slots.release()
 
     @property
+    def queued(self) -> int:
+        """Accepted and not yet taken by the writer. Reporting only: capacity is the semaphore."""
+        return self._queue.qsize()
+
+    @property
     def total_uncommitted(self) -> int:
         return len(self._uncommitted)
 

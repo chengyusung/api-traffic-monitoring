@@ -235,6 +235,12 @@ async def test_an_empty_queue_never_opens_a_transaction() -> None:
         assert clock.sleeps == [], "an idle writer should block on the queue, not poll a timer"
 
 
+def counts(writer: BatchWriter) -> tuple[int, int, int, int]:
+    """(queued, in_flight, retry_pending, total_uncommitted)"""
+    stats = writer.stats()
+    return stats.queued, stats.in_flight, stats.retry_pending, stats.total_uncommitted
+
+
 async def test_capacity_counts_the_batch_the_writer_holds() -> None:
     clock, sessions = FakeClock(), FakeSessions(hold=True)
     buffer = IngestionBuffer(capacity=2, clock=clock)
@@ -382,7 +388,7 @@ async def test_a_permanent_error_stops_the_writer_and_keeps_the_batch() -> None:
         await let_tasks_run()
         stats = writer.stats()
         assert stats.writer_state is WriterState.UNAVAILABLE
-        assert (stats.queued, stats.retry_pending, stats.total_uncommitted) == (1, 1, 2)
+        assert counts(writer) == (1, 1, 0, 2), "the kept batch is in the writer's hands"
         assert len(sessions.attempts) == 1, "the writer kept taking batches after a permanent error"
 
     [log] = sessions.audit
@@ -515,3 +521,24 @@ async def test_an_audit_row_that_fails_to_write_does_not_crash_the_writer() -> N
         await sessions.wait_for(lambda: len(sessions.attempts) == 1)
         await let_tasks_run()
         assert writer.state is WriterState.UNAVAILABLE
+
+
+async def test_stats_count_each_event_where_it_is() -> None:
+    clock, sessions = FakeClock(), FakeSessions([db_down()])
+    buffer = IngestionBuffer(capacity=10, clock=clock)
+    for n in range(2):
+        await buffer.accept(event(n))
+    writer = make_writer(buffer, sessions, clock, batch_max_size=3, sleep=BlockingSleep())
+    assert counts(writer) == (2, 0, 0, 2), "a writer that is not running holds nothing"
+
+    async with running(writer):
+        await let_tasks_run()  # collected two, waiting for a third or the interval
+        assert (writer.state, counts(writer)) == (WriterState.IDLE, (0, 2, 0, 2))
+
+        await buffer.accept(event(2))  # the batch is full: one attempt fails, back-off follows
+        await sessions.wait_for(lambda: len(sessions.attempts) == 1)
+        await let_tasks_run()
+        assert (writer.state, counts(writer)) == (WriterState.RETRY_WAIT, (0, 0, 3, 3))
+
+        await buffer.accept(event(3))
+        assert counts(writer) == (1, 0, 3, 4)

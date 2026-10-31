@@ -139,14 +139,16 @@ class BatchWriter:
         return age is not None and age > 2 * self._flush_interval_s
 
     def stats(self) -> IngestionStats:
+        """Each count is read where its events are, not derived from the others. The batch in
+        the writer's hands is in_flight while it is collected, committed, or kept after a
+        permanent error, and retry_pending only during a back-off."""
         held = len(self._held)
-        in_flight = held if self.state is WriterState.IN_FLIGHT else 0
-        total = self._buffer.total_uncommitted
+        backing_off = self.state is WriterState.RETRY_WAIT
         return IngestionStats(
-            queued=total - held,
-            in_flight=in_flight,
-            retry_pending=held - in_flight,
-            total_uncommitted=total,
+            queued=self._buffer.queued,
+            in_flight=0 if backing_off else held,
+            retry_pending=held if backing_off else 0,
+            total_uncommitted=self._buffer.total_uncommitted,
             oldest_pending_age_s=self._buffer.oldest_pending_age_s(),
             last_commit_at=self.last_commit_at,
             retry_count=self.retry_count,
@@ -174,14 +176,14 @@ class BatchWriter:
         first = await self._next_event(deadline=None)
         if first is None:
             return []
-        batch = [first]
+        self._held = [first]
         deadline = self._clock() + self._flush_interval_s
-        while len(batch) < self._batch_max_size:
+        while len(self._held) < self._batch_max_size:
             event = await self._next_event(deadline)
             if event is None:
                 break
-            batch.append(event)
-        return batch
+            self._held.append(event)
+        return self._held
 
     async def _next_event(self, deadline: float | None) -> IngestionEvent | None:
         """The next event, or None at the deadline or, with the queue empty, on close."""
@@ -202,7 +204,6 @@ class BatchWriter:
 
     async def _persist(self, batch: list[IngestionEvent]) -> bool:
         """Commit the batch, retrying transient failures. False after a permanent failure."""
-        self._held = batch
         while True:
             self.state = WriterState.IN_FLIGHT
             last_attempt = self._closing.is_set()

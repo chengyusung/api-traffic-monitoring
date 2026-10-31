@@ -233,7 +233,7 @@ Compose：`db` 有 healthcheck（`healthcheck.sh --connect --innodb_initialized`
 | DEGRADED | DB 暫時不可用或 Writer 在 retry；buffer 未滿 | 503（需認證的 REST 全部無法服務，所以不算 ready；body 仍是完整 JSON） |
 | UNAVAILABLE | 初始化失敗、Writer 停止、buffer 滿且無法寫入（Writer 在 retry，或已超過 2 個 flush interval 沒有 commit） | 503 |
 
-`/health/ready` 不需要認證，不論狀態碼都回同一份 JSON body，帶 `state` 與 ingestion 計數：`queued`、`in_flight`、`retry_pending`、`total_uncommitted`、`oldest_pending_age_s`、`last_commit_at`、`writer_state`、`active_connections`。這些是營運計數不是敏感資料。放在這裡而不是只放 `/admin/system` 的原因：授權每個 request 都查 DB（ADR-002），DB 故障時 `/admin/system` 本身會 503，而那正是最需要看 buffer 水位的時候。`/admin/system` 在這些之上多給 pool 狀態（`engine.pool.status()`）、threshold 最後載入時間、各表筆數。
+`/health/ready` 不需要認證，不論狀態碼都回同一份 JSON body，帶 `state` 與 ingestion 計數：`queued`、`in_flight`、`retry_pending`、`total_uncommitted`、`oldest_pending_age_s`、`last_commit_at`、`writer_state`、`active_connections`。每個計數都是在事件所在之處直接讀取：`in_flight` 是 Writer 手上的批次（收集中、寫入中，或永久錯誤後保留在記憶體的那一批，此時 `writer_state=UNAVAILABLE`），`retry_pending` 只在退避（`RETRY_WAIT`）期間非零。這些是營運計數不是敏感資料。放在這裡而不是只放 `/admin/system` 的原因：授權每個 request 都查 DB（ADR-002），DB 故障時 `/admin/system` 本身會 503，而那正是最需要看 buffer 水位的時候。`/admin/system` 在這些之上多給 pool 狀態（`engine.pool.status()`）、threshold 最後載入時間、各表筆數。
 
 把 readiness 與指標放在同一個端點是 MVP 的刻意簡化：若部署在會把 not-ready 實例移出的 load balancer 後面，這條診斷路徑會跟著不可達，production 應把指標拆到獨立的 `/metrics`（Roadmap 階段 1）。
 

@@ -34,17 +34,23 @@ async def test_live_returns_200(client: AsyncClient) -> None:
 
 
 async def test_ready_reports_the_pipelines_real_counters(
-    client: AsyncClient, pipeline: Pipeline
+    client: AsyncClient,
+    session_factory: async_sessionmaker[AsyncSession],
+    services: dict[str, int],
 ) -> None:
+    """The writer is not running, so no flush interval can move the events mid-test."""
+    pipeline = Pipeline.create(session_factory, simulator_enabled=False)
+    await pipeline.generator.reload_thresholds()
+    app.dependency_overrides[get_pipeline] = lambda: pipeline
     for event in pipeline.generator.build_events(utcnow()):
         await pipeline.buffer.accept(event)
 
     response = await client.get("/health/ready")
 
-    assert response.status_code == 200
+    assert response.status_code == 503
     body = response.json()
     assert body.keys() == READINESS_FIELDS
-    assert body["state"] == "HEALTHY"
+    assert body["state"] == "UNAVAILABLE", "the writer task is not running"
     assert (body["queued"], body["in_flight"], body["retry_pending"]) == (3, 0, 0)
     assert body["total_uncommitted"] == 3
     assert body["oldest_pending_age_s"] >= 0
