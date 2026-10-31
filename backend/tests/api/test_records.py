@@ -138,10 +138,18 @@ async def test_server_owned_fields_are_422_on_create_and_update(
         {"value": -1},
         {"value": "5"},
         {"observed_at": "2026-10-31T08:00:00"},
+        {"observed_at": "0001-01-01T00:00:00+01:00"},
         {"service_slug": "unknown"},
         {"title": ""},
     ],
-    ids=["negative", "string value", "naive datetime", "unknown service", "empty title"],
+    ids=[
+        "negative",
+        "string value",
+        "naive datetime",
+        "no UTC equivalent",
+        "unknown service",
+        "empty title",
+    ],
 )
 async def test_invalid_record_is_422(
     client: AsyncClient,
@@ -155,6 +163,17 @@ async def test_invalid_record_is_422(
     assert response.status_code == 422
     assert response.json()["error"]["code"] == "VALIDATION_ERROR"
     assert await record_count(session_factory) == 0
+
+
+async def test_an_oversized_service_slug_is_not_echoed(
+    client: AsyncClient, services: dict[str, int], user_a: Identity
+) -> None:
+    response = await client.post(
+        RECORDS, json=new_record(service_slug="p" * 33), headers=user_a.headers
+    )
+
+    assert response.status_code == 422
+    assert "p" * 33 not in response.text
 
 
 async def test_an_inactive_service_is_unknown_for_new_records(
@@ -544,7 +563,16 @@ async def test_sort_by_value_descending(
 
 @pytest.mark.parametrize(
     "params",
-    [{"page_size": 101}, {"page_size": 0}, {"page": 0}, {"sort": "title"}, {"bogus": "1"}],
+    [
+        {"page_size": 101},
+        {"page_size": 0},
+        {"page": 0},
+        {"page": 10001},
+        {"sort": "title"},
+        {"bogus": "1"},
+        {"start": "2026-11-01T00:00:00Z", "end": "2026-10-31T00:00:00Z"},
+        {"end": "9999-12-31T23:59:59-01:00"},
+    ],
 )
 async def test_list_params_outside_the_contract_are_422(
     client: AsyncClient, viewer: Identity, params: dict[str, Any]
@@ -553,6 +581,11 @@ async def test_list_params_outside_the_contract_are_422(
 
     assert response.status_code == 422
     assert response.json()["error"]["code"] == "VALIDATION_ERROR"
+
+
+async def test_list_bounds_are_inclusive(client: AsyncClient, viewer: Identity) -> None:
+    assert await list_ids(client, viewer, page=10000) == []
+    assert await list_ids(client, viewer, start=T0.isoformat(), end=T0.isoformat()) == []
 
 
 async def test_filters(

@@ -8,8 +8,17 @@ from app.models import RecordSource
 from app.schemas import NonNegativeInt
 
 Title = Annotated[str, Field(min_length=1, max_length=255)]
+
+
+def _to_utc(value: datetime) -> datetime:
+    try:
+        return value.astimezone(UTC)
+    except OverflowError as exc:
+        raise ValueError("datetime has no UTC equivalent") from exc
+
+
 # Naive input is a 422; aware input is converted to UTC at the boundary.
-UTCInstant = Annotated[AwareDatetime, AfterValidator(lambda value: value.astimezone(UTC))]
+UTCInstant = Annotated[AwareDatetime, AfterValidator(_to_utc)]
 RecordSort = Literal["observed_at", "-observed_at", "value", "-value", "created_at", "-created_at"]
 
 
@@ -17,7 +26,7 @@ class RecordCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     event_id: uuid.UUID | None = None
-    service_slug: str
+    service_slug: str = Field(max_length=32)
     title: Title
     value: NonNegativeInt
     observed_at: UTCInstant
@@ -66,9 +75,15 @@ class RecordFilters(BaseModel):
     end: UTCInstant | None = Field(default=None, description="Exclusive: observed_at < end")
     q: str | None = Field(default=None, max_length=255, description="Substring of title")
 
+    @model_validator(mode="after")
+    def reject_reversed_window(self) -> Self:
+        if self.start is not None and self.end is not None and self.start > self.end:
+            raise ValueError("start must not be after end")
+        return self
+
 
 class RecordListQuery(RecordFilters):
-    page: int = Field(default=1, ge=1)
+    page: int = Field(default=1, ge=1, le=10_000)
     page_size: int = Field(default=20, ge=1, le=100)
     sort: RecordSort = "-observed_at"
 
