@@ -13,6 +13,9 @@ from app.core.logging import REQUEST_ID_HEADER
 
 logger = logging.getLogger(__name__)
 
+# Connection-level failures only: IntegrityError and DataError stay bugs or conflicts.
+DATABASE_UNAVAILABLE = (sa_exc.OperationalError, sa_exc.InterfaceError, sa_exc.TimeoutError)
+
 
 class AppError(Exception):
     status_code: ClassVar[int] = HTTPStatus.INTERNAL_SERVER_ERROR
@@ -110,7 +113,6 @@ def register_error_handlers(app: FastAPI) -> None:
     app.add_exception_handler(AppError, _app_error)
     app.add_exception_handler(HTTPException, _http_error)
     app.add_exception_handler(RequestValidationError, _validation_error)
-    # Connection-level failures only: IntegrityError and DataError stay bugs or conflicts.
-    for unavailable in (sa_exc.OperationalError, sa_exc.InterfaceError, sa_exc.TimeoutError):
+    for unavailable in DATABASE_UNAVAILABLE:
         app.add_exception_handler(unavailable, _database_unavailable)
     app.add_exception_handler(Exception, _unhandled_error)

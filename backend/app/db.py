@@ -35,11 +35,15 @@ async def get_session() -> AsyncIterator[AsyncSession]:
         yield session
 
 
+def is_duplicate_key(exc: IntegrityError) -> bool:
+    """MariaDB ER_DUP_ENTRY only; FK or CHECK violations are bugs, not duplicates."""
+    return exc.orig is not None and exc.orig.args[0] == 1062
+
+
 async def flush_or_conflict(session: AsyncSession, message: str) -> None:
     try:
         await session.flush()
     except IntegrityError as exc:
-        # MariaDB ER_DUP_ENTRY only; FK or CHECK violations are bugs, not conflicts.
-        if exc.orig is not None and exc.orig.args[0] == 1062:
+        if is_duplicate_key(exc):
             raise ConflictError(message) from exc
         raise
