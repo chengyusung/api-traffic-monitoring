@@ -36,6 +36,7 @@ class Settings(BaseSettings):
     retry_initial_backoff_seconds: float = Field(default=1, gt=0)
     retry_max_backoff_seconds: float = Field(default=30, gt=0)
     shutdown_flush_timeout_seconds: float = Field(default=10, gt=0)
+    commit_timeout_seconds: float = Field(default=10, gt=0)
     threshold_reload_seconds: float = Field(default=5, gt=0)
     ws_max_connections: int = Field(default=100, gt=0)
     ws_per_connection_queue: int = Field(default=100, gt=0)

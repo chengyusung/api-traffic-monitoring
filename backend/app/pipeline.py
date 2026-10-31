@@ -21,11 +21,18 @@ STATUS_POLL_S = 1.0
 
 
 def evaluate(
-    *, ready: bool, db_ok: bool, writer_state: WriterState, retrying: bool, buffer_full: bool
+    *,
+    ready: bool,
+    db_ok: bool,
+    writer_state: WriterState,
+    retrying: bool,
+    stalled: bool,
+    buffer_full: bool,
 ) -> HealthState:
-    """architecture.md §9. `retrying` holds from a batch's first failure until its commit."""
+    """architecture.md §9. `retrying` holds from a batch's first failure until its commit;
+    `stalled` means no commit for two flush intervals, whatever the writer's state says."""
     writer_stopped = writer_state in (WriterState.UNAVAILABLE, WriterState.STOPPED)
-    if not ready or writer_stopped or (buffer_full and retrying):
+    if not ready or writer_stopped or (buffer_full and (retrying or stalled)):
         return HealthState.UNAVAILABLE
     if not db_ok or retrying:
         return HealthState.DEGRADED
@@ -67,6 +74,7 @@ class Pipeline:
                 flush_interval_s=settings.flush_interval_seconds,
                 retry_initial_s=settings.retry_initial_backoff_seconds,
                 retry_max_s=settings.retry_max_backoff_seconds,
+                commit_timeout_s=settings.commit_timeout_seconds,
             ),
             generator=Generator(
                 buffer,
@@ -117,6 +125,7 @@ class Pipeline:
             db_ok=db_ok,
             writer_state=self.writer.state,
             retrying=self.writer.retrying,
+            stalled=self.writer.stalled,
             buffer_full=self.buffer.is_full,
         )
 

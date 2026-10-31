@@ -16,6 +16,7 @@ from app.pipeline import evaluate
 from app.schemas.realtime import HealthState
 
 FLUSH_S = 5.0
+COMMIT_TIMEOUT_S = 0.05  # real seconds: asyncio.timeout runs on the event loop's clock
 
 
 class FakeClock:
@@ -159,6 +160,7 @@ def make_writer(
         flush_interval_s=FLUSH_S,
         retry_initial_s=1,
         retry_max_s=30,
+        commit_timeout_s=COMMIT_TIMEOUT_S,
         clock=clock,
         sleep=clock.sleep,
         rng=CeilingJitter(),
@@ -286,6 +288,39 @@ async def test_backoff_doubles_from_one_second_and_caps_at_thirty() -> None:
     assert clock.sleeps == [1, 2, 4, 8, 16, 30, 30, 30]
 
 
+async def test_a_hung_commit_times_out_and_is_retried_on_a_fresh_session() -> None:
+    clock, sessions = FakeClock(), FakeSessions(hold=True)
+    buffer = IngestionBuffer(capacity=10, clock=clock)
+    await buffer.accept(event(1))
+    writer = make_writer(buffer, sessions, clock, batch_max_size=1)
+
+    async with running(writer), asyncio.timeout(5):
+        # The first attempt is never released: only the commit timeout can end it.
+        await sessions.wait_for(lambda: len(sessions.attempts) == 2)
+        assert writer.retrying
+        sessions.permits.release()
+        await sessions.wait_for(lambda: len(sessions.committed) == 1)
+
+    assert sessions.opened >= 2, "the retry reused the session of the hung attempt"
+    first_try, retry = sessions.attempts
+    assert [payload(row) for row in retry] == [payload(row) for row in first_try]
+    assert writer.retry_count == 1
+    assert buffer.total_uncommitted == 0
+
+
+async def test_an_event_waiting_two_flush_intervals_marks_the_writer_stalled() -> None:
+    clock = FakeClock()
+    buffer = IngestionBuffer(capacity=10, clock=clock)
+    writer = make_writer(buffer, FakeSessions(), clock)
+    assert not writer.stalled, "nothing is waiting"
+
+    await buffer.accept(event(1))
+    clock.now = 2 * FLUSH_S
+    assert not writer.stalled
+    clock.now = 2 * FLUSH_S + 0.1
+    assert writer.stalled
+
+
 async def test_health_stays_degraded_from_the_first_failure_until_the_commit() -> None:
     clock, sessions = FakeClock(), FakeSessions([db_down(), db_down()], hold=True)
     buffer = IngestionBuffer(capacity=10, clock=clock)
@@ -298,6 +333,7 @@ async def test_health_stays_degraded_from_the_first_failure_until_the_commit() -
             db_ok=True,
             writer_state=writer.state,
             retrying=writer.retrying,
+            stalled=False,
             buffer_full=False,
         )
         return writer.state, state

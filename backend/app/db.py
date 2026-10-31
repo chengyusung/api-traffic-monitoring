@@ -21,8 +21,12 @@ def make_engine(url: str) -> AsyncEngine:
         pool_recycle=settings.db_pool_recycle_seconds,
         # Bound values (emails, password hashes) stay out of exception text and logs.
         hide_parameters=True,
-        # Runs on every new physical connection, not once at startup.
-        connect_args={"init_command": "SET time_zone='+00:00'"},
+        connect_args={
+            # Runs on every new physical connection, not once at startup.
+            "init_command": "SET time_zone='+00:00'",
+            # A black-holed connection fails as a lost connection instead of hanging forever.
+            "read_timeout": settings.commit_timeout_seconds,
+        },
     )
 
 

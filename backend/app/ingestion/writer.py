@@ -95,6 +95,7 @@ class BatchWriter:
         flush_interval_s: float,
         retry_initial_s: float,
         retry_max_s: float,
+        commit_timeout_s: float,
         clock: Callable[[], float] = time.monotonic,
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
         rng: random.Random | None = None,
@@ -105,6 +106,7 @@ class BatchWriter:
         self._flush_interval_s = flush_interval_s
         self._retry_initial_s = retry_initial_s
         self._retry_max_s = retry_max_s
+        self._commit_timeout_s = commit_timeout_s
         self._clock = clock
         self._sleep = sleep
         self._rng = rng or random.Random()
@@ -119,6 +121,12 @@ class BatchWriter:
     def retrying(self) -> bool:
         """The held batch failed at least once: still true while the next attempt is in flight."""
         return self.failed_attempts > 0
+
+    @property
+    def stalled(self) -> bool:
+        """An event has waited two flush intervals without a commit."""
+        age = self._buffer.oldest_pending_age_s()
+        return age is not None and age > 2 * self._flush_interval_s
 
     def stats(self) -> IngestionStats:
         held = len(self._held)
@@ -187,7 +195,9 @@ class BatchWriter:
         while True:
             self.state = WriterState.IN_FLIGHT
             try:
-                await self._commit(batch)
+                # A hung database becomes a transient TimeoutError, retried on a fresh session.
+                async with asyncio.timeout(self._commit_timeout_s):
+                    await self._commit(batch)
                 break
             except Exception as exc:
                 if not is_transient(exc):

@@ -26,6 +26,7 @@ Simulator 每秒產生三筆事件。題目要求「定期或條件觸發批次�
 | Flush interval | 5 s，從當前批次第一筆進入起算（`time.monotonic()`） |
 | Retry | 初始 1 s、×2、full jitter、上限 30 s；暫時錯誤無限重試 |
 | Shutdown flush timeout | 10 s |
+| Commit timeout | 10 s，每次寫入嘗試的上限（同值設為 asyncmy `read_timeout`）；逾時視為暫時錯誤 |
 
 Flush 以先到者為準：滿 100 筆，或非空批次等滿 5 秒。空 Queue 不開空 transaction。每秒三筆的正常情況下約 15 筆由時間觸發；100 筆上限主要在 DB 恢復後 drain 積壓時生效。
 

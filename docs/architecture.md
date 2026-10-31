@@ -231,7 +231,7 @@ Compose：`db` 有 healthcheck（`healthcheck.sh --connect --innodb_initialized`
 |---|---|---|
 | HEALTHY | DB 可用、Generator / Writer 存活、無 retry 中批次 | 200 |
 | DEGRADED | DB 暫時不可用或 Writer 在 retry；buffer 未滿 | 503（需認證的 REST 全部無法服務，所以不算 ready；body 仍是完整 JSON） |
-| UNAVAILABLE | 初始化失敗、Writer 停止、buffer 滿且無法寫入 | 503 |
+| UNAVAILABLE | 初始化失敗、Writer 停止、buffer 滿且無法寫入（Writer 在 retry，或已超過 2 個 flush interval 沒有 commit） | 503 |
 
 `/health/ready` 不需要認證，不論狀態碼都回同一份 JSON body，帶 `state` 與 ingestion 計數：`queued`、`in_flight`、`retry_pending`、`total_uncommitted`、`oldest_pending_age_s`、`last_commit_at`、`writer_state`、`active_connections`。這些是營運計數不是敏感資料。放在這裡而不是只放 `/admin/system` 的原因：授權每個 request 都查 DB（ADR-002），DB 故障時 `/admin/system` 本身會 503，而那正是最需要看 buffer 水位的時候。`/admin/system` 在這些之上多給 pool 狀態（`engine.pool.status()`）、threshold 最後載入時間、各表筆數。
 

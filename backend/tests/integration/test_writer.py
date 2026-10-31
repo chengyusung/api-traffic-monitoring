@@ -39,6 +39,7 @@ async def flush_and_stop(buffer: IngestionBuffer, sessions: async_sessionmaker[A
         flush_interval_s=5,
         retry_initial_s=1,
         retry_max_s=30,
+        commit_timeout_s=10,
     )
     writer.close()
     await writer.run()
