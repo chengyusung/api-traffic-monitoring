@@ -20,6 +20,9 @@ services:
       args:
         INSTALL_DEV: "true"
     env_file: .env
+    # The demo seed and the import tests read data/sample_traffic.csv.
+    volumes:
+      - ./data:/app/data:ro
     # The writer's shutdown flush takes up to 10 s; the default grace period would SIGKILL it.
     stop_grace_period: 20s
     depends_on:

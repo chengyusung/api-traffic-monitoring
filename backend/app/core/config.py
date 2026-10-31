@@ -42,6 +42,11 @@ class Settings(BaseSettings):
     ws_per_connection_queue: int = Field(default=100, gt=0)
     ws_send_timeout_seconds: float = Field(default=5, gt=0)
 
+    # architecture.md §5.3 and §7 limits.
+    import_max_rows: int = Field(default=10_000, gt=0)
+    import_max_bytes: int = Field(default=5 * 1024 * 1024, gt=0)
+    export_max_rows: int = Field(default=50_000, gt=0)
+
     @field_validator("jwt_secret_key")
     @classmethod
     def reject_placeholder(cls, value: SecretStr) -> SecretStr:

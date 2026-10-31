@@ -1,6 +1,6 @@
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 
-from sqlalchemy import ColumnElement, func, select
+from sqlalchemy import ColumnElement, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import ApiService, TrafficRecord
@@ -50,3 +50,23 @@ async def list_page(
         .limit(query.page_size)
     )
     return rows.all(), total or 0
+
+
+async def existing_event_ids(session: AsyncSession, event_ids: Collection[str]) -> set[str]:
+    if not event_ids:
+        return set()
+    rows = await session.scalars(
+        select(TrafficRecord.event_id).where(TrafficRecord.event_id.in_(event_ids))
+    )
+    return set(rows)
+
+
+async def link_import_batch(
+    session: AsyncSession, record_ids: Sequence[int], batch_id: int
+) -> None:
+    await session.execute(
+        update(TrafficRecord)
+        .where(TrafficRecord.id.in_(record_ids))
+        .values(import_batch_id=batch_id)
+        .execution_options(synchronize_session=False)
+    )

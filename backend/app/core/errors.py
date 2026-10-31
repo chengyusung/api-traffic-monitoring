@@ -1,5 +1,6 @@
 import logging
 import uuid
+from collections.abc import Mapping, Sequence
 from http import HTTPStatus
 from typing import ClassVar
 
@@ -21,9 +22,10 @@ class AppError(Exception):
     status_code: ClassVar[int] = HTTPStatus.INTERNAL_SERVER_ERROR
     code: ClassVar[str] = "INTERNAL_SERVER_ERROR"
 
-    def __init__(self, message: str) -> None:
+    def __init__(self, message: str, details: Sequence[Mapping[str, object]] | None = None) -> None:
         super().__init__(message)
         self.message = message
+        self.details = details
 
 
 class UnauthorizedError(AppError):
@@ -66,11 +68,15 @@ def _error_response(
     code: str,
     message: str,
     headers: dict[str, str] | None = None,
+    details: Sequence[Mapping[str, object]] | None = None,
 ) -> JSONResponse:
     request_id = getattr(request.state, "request_id", None) or uuid.uuid4().hex
+    error: dict[str, object] = {"code": code, "message": message, "request_id": request_id}
+    if details is not None:
+        error["details"] = details
     return JSONResponse(
         status_code=status_code,
-        content={"error": {"code": code, "message": message, "request_id": request_id}},
+        content={"error": error},
         headers={**(headers or {}), REQUEST_ID_HEADER: request_id},
     )
 
@@ -78,7 +84,7 @@ def _error_response(
 async def _app_error(request: Request, exc: AppError) -> JSONResponse:
     # RFC 6750 §3: a 401 names the scheme the client should retry with.
     headers = {"WWW-Authenticate": "Bearer"} if exc.status_code == HTTPStatus.UNAUTHORIZED else None
-    return _error_response(request, exc.status_code, exc.code, exc.message, headers)
+    return _error_response(request, exc.status_code, exc.code, exc.message, headers, exc.details)
 
 
 async def _http_error(request: Request, exc: HTTPException) -> JSONResponse:

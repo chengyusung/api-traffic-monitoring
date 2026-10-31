@@ -42,7 +42,10 @@ async def list_records(session: AsyncSession, query: RecordListQuery) -> RecordP
 
 
 async def create_records(
-    session: AsyncSession, items: Sequence[RecordCreate], actor: User
+    session: AsyncSession,
+    items: Sequence[RecordCreate],
+    actor: User,
+    source: RecordSource = RecordSource.MANUAL,
 ) -> list[TrafficRecord]:
     """Insert every item in one transaction, or none of them."""
     found = await api_services.get_by_slugs(session, (item.service_slug for item in items))
@@ -57,7 +60,7 @@ async def create_records(
             service_id=services[item.service_slug].id,
             title=item.title,
             value=item.value,
-            source=RecordSource.MANUAL,
+            source=source,
             created_by=actor.id,
             observed_at=item.observed_at,
             persisted_at=persisted_at,
