@@ -2,22 +2,27 @@
 
 import asyncio
 import logging
+from pathlib import Path
 
-from pydantic import SecretStr
+from pydantic import SecretStr, TypeAdapter
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.logging import setup_logging
 from app.core.security import hash_password
 from app.db import SessionLocal, engine
-from app.models import ApiService, Role, User
+from app.models import ApiService, RecordSource, Role, TrafficRecord, User
 from app.repositories import api_services, users
-from app.schemas.auth import UserCreate
+from app.schemas.auth import Email, UserCreate
+from app.services import imports
 
 logger = logging.getLogger("app.bootstrap")
 
 # architecture.md §5: slug, display name, initial alert_threshold.
 SERVICES = (("auth", "Auth API", 80), ("orders", "Orders API", 150), ("payment", "Payment API", 80))
+# docker-compose.yml mounts the repository's data/ here.
+DEMO_RECORDS = Path(__file__).resolve().parents[1] / "data" / "sample_traffic.csv"
 
 
 async def ensure_services(session: AsyncSession) -> list[str]:
@@ -79,6 +84,19 @@ async def seed_demo(
     return created
 
 
+async def seed_demo_records(session: AsyncSession, user_email: str | None) -> int | None:
+    """Import the sample CSV as the demo USER unless any IMPORT row exists; returns the batch id."""
+    imported = select(TrafficRecord.id).where(TrafficRecord.source == RecordSource.IMPORT)
+    if await session.scalar(imported.limit(1)) is not None:
+        return None
+    user = await users.get_by_email(session, TypeAdapter(Email).validate_python(user_email))
+    if user is None:
+        raise RuntimeError("SEED_DEMO_DATA=true but the demo USER does not exist.")
+    content = await asyncio.to_thread(DEMO_RECORDS.read_bytes)
+    batch = await imports.import_file(session, f"seed:{DEMO_RECORDS.name}", content, user)
+    return batch.id
+
+
 async def main() -> None:
     setup_logging(settings.log_level)
     async with SessionLocal() as session:
@@ -96,6 +114,8 @@ async def main() -> None:
                 ],
             )
             logger.info("seed_demo", extra={"inserted": inserted_emails})
+            batch_id = await seed_demo_records(session, settings.demo_user_email)
+            logger.info("seed_demo_records", extra={"import_batch_id": batch_id})
         else:
             logger.info("seed_demo", extra={"skipped": "SEED_DEMO_DATA is false"})
     await engine.dispose()
