@@ -61,6 +61,13 @@ def _get(token: str, path: str, params: dict[str, Any] | None = None) -> Any:
     return _json(response)
 
 
+def _patch(token: str, path: str, body: dict[str, Any]) -> Any:
+    response = requests.patch(
+        f"{API_BASE_URL}{path}", json=body, headers=_auth(token), timeout=TIMEOUT_SECONDS
+    )
+    return _json(response)
+
+
 def login(email: str, password: str) -> str:
     response = requests.post(
         f"{API_BASE_URL}/auth/token",
@@ -90,13 +97,7 @@ def create_record(token: str, record: dict[str, Any]) -> dict[str, Any]:
 
 
 def update_record(token: str, record_id: int, changes: dict[str, Any]) -> dict[str, Any]:
-    response = requests.patch(
-        f"{API_BASE_URL}/records/{record_id}",
-        json=changes,
-        headers=_auth(token),
-        timeout=TIMEOUT_SECONDS,
-    )
-    return _json(response)
+    return _patch(token, f"/records/{record_id}", changes)
 
 
 def delete_record(token: str, record_id: int) -> bool:
@@ -132,6 +133,30 @@ def export_xlsx(token: str, params: dict[str, Any]) -> bytes:
         timeout=TRANSFER_TIMEOUT_SECONDS,
     )
     return _check(response).content
+
+
+def update_threshold(token: str, service_id: int, threshold: int) -> dict[str, Any]:
+    return _patch(token, f"/services/{service_id}", {"alert_threshold": threshold})
+
+
+def admin_users(token: str, params: dict[str, Any]) -> dict[str, Any]:
+    return _get(token, "/admin/users", params)
+
+
+def admin_update_user(token: str, user_id: int, changes: dict[str, Any]) -> dict[str, Any]:
+    return _patch(token, f"/admin/users/{user_id}", changes)
+
+
+def admin_logs(token: str, params: dict[str, Any]) -> dict[str, Any]:
+    return _get(token, "/admin/logs", params)
+
+
+def admin_event_types(token: str) -> list[str]:
+    return _get(token, "/admin/logs/event-types")
+
+
+def admin_system(token: str) -> dict[str, Any]:
+    return _get(token, "/admin/system")
 
 
 def get_readiness() -> dict[str, Any]:

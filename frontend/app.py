@@ -30,6 +30,8 @@ else:
     st.page_link("pages/1_Live_Monitor.py", label="前往 Live Monitor")
     st.page_link("pages/2_Records.py", label="前往 Records")
     st.page_link("pages/3_Analytics.py", label="前往 Analytics")
+    if user["role"] == "ADMIN":
+        st.page_link("pages/4_Admin.py", label="前往 Admin")
     if st.button("登出"):
         session.sign_out()
         st.rerun()
