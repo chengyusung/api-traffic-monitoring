@@ -26,9 +26,17 @@ TRANSIENT_ERRNOS = frozenset(
         1040,  # too many connections
         1020,  # record changed since the snapshot (innodb_snapshot_isolation); like a deadlock
         1053,  # server shutdown in progress
+        1158,  # error reading communication packets
+        1159,  # timeout reading communication packets
+        1160,  # error writing communication packets
+        1161,  # timeout writing communication packets
+        1203,  # max_user_connections reached
         1205,  # lock wait timeout
         1213,  # deadlock
+        1290,  # server running with --read-only, as during a failover
+        1317,  # query interrupted (KILL QUERY)
         1927,  # connection killed
+        1969,  # max_statement_time exceeded
         4031,  # disconnected by the server for inactivity
     }
 )
@@ -43,7 +51,7 @@ def driver_errno(exc: BaseException) -> int | None:
 
 def database_unavailable(exc: BaseException) -> bool:
     """A failure a later attempt can fix: the connection, a lock or a timeout, not the statement."""
-    if isinstance(exc, (TimeoutError, sa_exc.TimeoutError)):
+    if isinstance(exc, sa_exc.TimeoutError):
         return True
     if not isinstance(exc, sa_exc.DBAPIError):
         return False

@@ -16,6 +16,19 @@ DB_ERRORS: dict[str, tuple[Callable[[], Exception], int, int | None]] = {
     "2003 cannot connect": (lambda: server_error(2003), 503, 2003),
     "1213 deadlock": (lambda: server_error(1213), 503, 1213),
     "1020 snapshot conflict": (lambda: server_error(1020), 503, 1020),
+    **{
+        f"{errno} {name}": (lambda errno=errno: server_error(errno), 503, errno)
+        for errno, name in (
+            (1158, "packet read error"),
+            (1159, "packet read timeout"),
+            (1160, "packet write error"),
+            (1161, "packet write timeout"),
+            (1203, "max_user_connections"),
+            (1290, "read-only server"),
+            (1317, "query interrupted"),
+            (1969, "statement timeout"),
+        )
+    },
     "invalidated connection": (
         lambda: exc.DBAPIError.instance(
             "SELECT 1",

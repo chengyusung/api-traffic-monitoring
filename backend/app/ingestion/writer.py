@@ -23,8 +23,13 @@ logger = logging.getLogger(__name__)
 
 def is_transient(exc: Exception) -> bool:
     """What a later attempt can fix is retried forever; anything else stops the writer."""
-    # A duplicate is only reachable when a row appeared between the dedupe query and the insert.
-    return database_unavailable(exc) or (isinstance(exc, IntegrityError) and is_duplicate_key(exc))
+    # TimeoutError is this writer's own per-attempt limit around a commit. A duplicate is only
+    # reachable when a row appeared between the dedupe query and the insert.
+    return (
+        isinstance(exc, TimeoutError)
+        or database_unavailable(exc)
+        or (isinstance(exc, IntegrityError) and is_duplicate_key(exc))
+    )
 
 
 def to_record(event: IngestionEvent, persisted_at: datetime) -> TrafficRecord:

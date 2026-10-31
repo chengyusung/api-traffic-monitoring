@@ -34,7 +34,7 @@ Flush 以先到者為準：滿 100 筆，或非空批次等滿 5 秒。空 Queue
 
 **冪等**：DB 已 commit 但 ack 遺失時，重試會撞 `unique(event_id)`。處理：捕捉 `IntegrityError` → rollback → `select(TrafficRecord.event_id).where(TrafficRecord.event_id.in_(batch_ids))` 找出已存在者 → 只插入缺少的事件 → commit → 釋放整批。同 `event_id` 視為已持久化。這是 at-least-once 嘗試 + unique key 去重；不宣稱 exactly-once。
 
-**錯誤分類**：依 MariaDB errno 判斷，不看 exception 類別，因為 asyncmy 把沒有對應類別的 errno（包括 CHECK 4025、unknown column 1054）都包成 `OperationalError`。連線中斷或被拒、lock wait timeout、deadlock、snapshot 衝突（1020）、invalidated connection、寫入逾時、pool timeout → 暫時錯誤，退避重試，WARNING log 節流為每個退避週期一筆；REST 對同一組錯誤回 503（`app/core/errors.py` 的 `database_unavailable()`）。其他錯誤，例如 CHECK、unknown column、FK、資料過長 → 永久錯誤：批次保留在記憶體、記 ERROR 與 `system_logs`、狀態轉 UNAVAILABLE、Writer 停止取新批次。這會讓 readiness 失敗並連帶停止 Generator，需要人工介入；重啟會遺失該批次，README 明寫。
+**錯誤分類**：依 MariaDB errno 判斷，不看 exception 類別，因為 asyncmy 把沒有對應類別的 errno（包括 CHECK 4025、unknown column 1054）都包成 `OperationalError`。連線中斷或被拒、封包讀寫錯誤、server 唯讀、查詢被中斷或逾時、lock wait timeout、deadlock、snapshot 衝突（1020）、invalidated connection、寫入逾時、pool timeout → 暫時錯誤，退避重試，WARNING log 節流為每個退避週期一筆；REST 對同一組錯誤回 503（`app/core/errors.py` 的 `database_unavailable()`；寫入逾時是 Writer 自己的 `asyncio.timeout`，只在 `is_transient()` 裡判斷）。其他錯誤，例如 CHECK、unknown column、FK、資料過長 → 永久錯誤：批次保留在記憶體、記 ERROR 與 `system_logs`、狀態轉 UNAVAILABLE、Writer 停止取新批次。這會讓 readiness 失敗並連帶停止 Generator，需要人工介入；重啟會遺失該批次，README 明寫。
 
 **Backpressure**：容量滿時 Generator 在 reservation 上等待，不產生新事件。完全無法寫入時從空 buffer 算起約 333 秒的容量。暫停期間是採樣缺口，Analytics 不補零。
 
