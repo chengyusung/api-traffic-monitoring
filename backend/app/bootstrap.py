@@ -1,0 +1,98 @@
+"""Startup steps run by entrypoint.sh after `alembic upgrade head`. Each step is idempotent."""
+
+import asyncio
+import logging
+
+from pydantic import SecretStr
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.config import settings
+from app.core.logging import setup_logging
+from app.core.security import hash_password
+from app.db import SessionLocal, engine
+from app.models import ApiService, Role, User
+from app.repositories import api_services, users
+from app.schemas.auth import normalize_email
+
+logger = logging.getLogger("app.bootstrap")
+
+# architecture.md §5: slug, display name, initial alert_threshold.
+SERVICES = (("auth", "Auth API", 80), ("orders", "Orders API", 150), ("payment", "Payment API", 80))
+
+
+async def ensure_services(session: AsyncSession) -> list[str]:
+    """Insert missing services. Existing rows keep the threshold an admin may have set."""
+    existing = await api_services.get_by_slugs(session, (slug for slug, _, _ in SERVICES))
+    missing = [row for row in SERVICES if row[0] not in existing]
+    session.add_all(
+        ApiService(slug=slug, display_name=name, alert_threshold=threshold)
+        for slug, name, threshold in missing
+    )
+    await session.commit()
+    return [slug for slug, _, _ in missing]
+
+
+async def bootstrap_admin(
+    session: AsyncSession, email: str | None, password: SecretStr | None
+) -> bool:
+    """Create the first ADMIN only while no ADMIN exists, so a restart never adds another."""
+    if await users.admin_exists(session):
+        return False
+    if not email or password is None:
+        raise RuntimeError("No ADMIN exists and ADMIN_EMAIL / ADMIN_PASSWORD are not set.")
+    email = normalize_email(email)
+    if await users.get_by_email(session, email) is not None:
+        # Promoting an account someone else registered would hand them admin rights.
+        raise RuntimeError(
+            "ADMIN_EMAIL belongs to an existing non-admin user; refusing to promote."
+        )
+    session.add(
+        User(email=email, password_hash=hash_password(password.get_secret_value()), role=Role.ADMIN)
+    )
+    await session.commit()
+    return True
+
+
+async def seed_demo(
+    session: AsyncSession, accounts: list[tuple[Role, str | None, SecretStr | None]]
+) -> list[str]:
+    created = []
+    for role, email, password in accounts:
+        if not email or password is None:
+            raise RuntimeError(f"SEED_DEMO_DATA=true needs DEMO_{role}_EMAIL and _PASSWORD.")
+        email = normalize_email(email)
+        if await users.get_by_email(session, email) is None:
+            session.add(
+                User(
+                    email=email, password_hash=hash_password(password.get_secret_value()), role=role
+                )
+            )
+            created.append(email)
+    await session.commit()
+    return created
+
+
+async def main() -> None:
+    setup_logging(settings.log_level)
+    async with SessionLocal() as session:
+        logger.info("ensure_services", extra={"inserted": await ensure_services(session)})
+
+        inserted = await bootstrap_admin(session, settings.admin_email, settings.admin_password)
+        logger.info("bootstrap_admin", extra={"inserted": inserted})
+
+        if settings.seed_demo_data:
+            inserted_emails = await seed_demo(
+                session,
+                [
+                    (Role.USER, settings.demo_user_email, settings.demo_user_password),
+                    (Role.VIEWER, settings.demo_viewer_email, settings.demo_viewer_password),
+                ],
+            )
+            logger.info("seed_demo", extra={"inserted": inserted_emails})
+        else:
+            logger.info("seed_demo", extra={"skipped": "SEED_DEMO_DATA is false"})
+    await engine.dispose()
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
