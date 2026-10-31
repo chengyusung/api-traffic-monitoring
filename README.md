@@ -70,7 +70,7 @@ flowchart LR
 
 ## 快速開始（Docker）
 
-需要 Docker Compose v2。作者在 macOS 上以 Podman 5.7（docker CLI）驗證；Docker Engine 沒有在本機測過，由 GitHub Actions 驗證。
+需要 Docker Compose v2。所有驗證都在 macOS 上以 Podman 5.7 經由 docker CLI 執行；Docker Engine 沒有測過，GitHub Actions workflow 也還沒有跑過。
 
 ```bash
 git clone <repo-url> && cd api-traffic-monitoring
@@ -289,7 +289,7 @@ docker compose exec api ruff check . && docker compose exec api ruff format --ch
 - 登入吞吐量受 CPU 限制（每次 Argon2 驗證約 28 ms，同時最多 2 個）；沒有 rate limit。
 - api 容器以 `INSTALL_DEV=true` 建置，裡面有 pytest 與 ruff，所以測試能在容器內跑；production 建置要用 `--no-dev`。
 - 本地運行時 `DATABASE_URL` 要指向 `127.0.0.1`，不能沿用 compose 用的 `db`（見上方「本地運行」）。
-- compose 的 healthcheck 用 `CMD-SHELL`，因為 Podman 把 exec 形式的 `python -c` 引數切開。Docker Engine 上沒有重新驗證，預期由 GitHub Actions 確認。
+- compose 的 healthcheck 用 `CMD-SHELL`，因為 Podman 把 exec 形式的 `python -c` 引數切開。Docker Engine 上沒有驗證過，GitHub Actions 也還沒有跑過。
 - 所有 DB 連線層級錯誤與 1020（snapshot conflict）都回 503 `Database unavailable`；1020 實際上是可重送的衝突，用 409 會更精確。其他 DB 錯誤回 500。
 - `IMPORT_MAX_BYTES` 在檔案被讀取時才檢查，此時 Starlette 已經緩衝了整個上傳；要在邊界擋住過大的檔案，需要 reverse proxy 的大小限制。
 - 匯入的資料 commit 之後，若寫 `import_batches` 失敗，client 會收到 503；沒有 `event_id` 的列重送會重複寫入。
