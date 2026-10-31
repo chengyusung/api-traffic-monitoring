@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.config import settings
 from app.models import RecordSource
+from app.services import analytics as analytics_service
 from tests.api.test_records import insert_record
 from tests.conftest import Identity
 
@@ -132,6 +133,22 @@ async def test_export_is_an_xlsx_with_one_row_per_filtered_record(
     ]
     assert by_name[0]["observed_at_utc"] == datetime(2026, 10, 31, 8, 1)
     assert by_name[1]["is_anomaly"] is True
+
+
+@pytest.mark.usefixtures("dataset")
+async def test_more_trend_buckets_than_the_cap_is_rejected(
+    client: AsyncClient, viewer: Identity, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(analytics_service, "TREND_MAX_BUCKETS", 2)
+
+    minute, hour = [
+        await client.get(f"{ANALYTICS}/trends", params={"bucket": b}, headers=viewer.headers)
+        for b in ("minute", "hour")
+    ]
+
+    # The dataset spans three minute buckets and two hour buckets.
+    assert (minute.status_code, hour.status_code, len(hour.json())) == (422, 200, 2)
+    assert minute.json()["error"]["code"] == "VALIDATION_ERROR"
 
 
 async def export_titles(client: AsyncClient, viewer: Identity) -> dict[str, str]:

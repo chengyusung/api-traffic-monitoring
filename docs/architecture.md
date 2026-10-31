@@ -230,7 +230,7 @@ Analytics 一律在 DB 聚合（`select(func.count(), func.sum(), func.avg(), fu
 | Login | 登入 / 登出、token 過期提示 |
 | Live Monitor | 三條折線（近 120 秒）、即時柱狀圖、異常標記、連線狀態、最後事件時間、系統狀態 |
 | Records | 分頁 / 篩選 / 排序列表、新增 / 編輯 / 刪除（依角色顯示）、CSV / JSON 匯入與結果 |
-| Analytics | KPI、時間區間、Service 聚合、趨勢圖、Excel 下載 |
+| Analytics | KPI、時間區間（預設最近 24 小時，因為一週以上的資料按分鐘分桶會超過 10,080 個 bucket）、Service 聚合、趨勢圖、Excel 下載 |
 | Admin | 使用者與角色、Threshold、系統狀態（buffer / pool / health）、系統日誌、歷史查詢；其他角色開啟時只看到提示，API 一律 403 |
 
 Session state 保存 token、使用者資訊、receiver 狀態；每個 session 最多一個 WS receiver，rerun 不重建。Receiver 是 daemon thread，只 append 到有同步保護的 `deque`，不碰 `st.session_state` 或任何 `st.*` API——Streamlit 只保證 script thread 可以安全使用這些；`st.session_state` 只由 script thread 讀寫。Streamlit 沒有可靠的 session 結束 hook，使用者直接關分頁時 thread 會殘留到 token 到期或 server 關閉連線為止，server 端 `WS_MAX_CONNECTIONS` 兜底。Live Monitor 標示「即時（尚未持久化）」，不讓使用者把 live 事件當成已落盤。UI 隱藏按鈕只是體驗，不是授權；所有權限由 Backend 判定。

@@ -59,7 +59,9 @@ def _label(value: Any) -> str:
     return "全部" if value is None else str(value)
 
 
-def filters(services: list[dict[str, Any]], key: str) -> dict[str, Any]:
+def filters(
+    services: list[dict[str, Any]], key: str, default_range: str = "全部"
+) -> dict[str, Any]:
     """The records list filters as query params; the backend validates them."""
     columns = st.columns(5)
     service = columns[0].selectbox(
@@ -71,7 +73,9 @@ def filters(services: list[dict[str, Any]], key: str) -> dict[str, Any]:
     anomaly = columns[2].selectbox(
         "異常", list(ANOMALY), format_func=ANOMALY.__getitem__, key=f"{key}-anomaly"
     )
-    window = columns[3].selectbox("時間範圍", list(RANGES), key=f"{key}-range")
+    window = columns[3].selectbox(
+        "時間範圍", list(RANGES), index=list(RANGES).index(default_range), key=f"{key}-range"
+    )
     q = columns[4].text_input("Title 包含", key=f"{key}-q", max_chars=255)
 
     start = end = None

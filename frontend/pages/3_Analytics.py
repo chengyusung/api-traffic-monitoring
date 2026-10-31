@@ -26,7 +26,8 @@ st.title("Analytics")
 st.caption("資料來自 MariaDB 已寫入的 records（不含尚未持久化的即時事件）；時間皆為 UTC。")
 
 services = ui.call(api.list_services) or []
-params = ui.filters(services, key="analytics")
+# Not 全部: minute trends stop at 10,080 buckets, which a week of data already exceeds.
+params = ui.filters(services, key="analytics", default_range="最近 24 小時")
 
 summary = ui.call(api.analytics, "summary", params)
 if summary:

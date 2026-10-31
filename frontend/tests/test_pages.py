@@ -3,6 +3,7 @@
 import os
 import threading
 import unittest
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from unittest import mock
 
@@ -47,6 +48,14 @@ def page(name: str, user: dict[str, Any]) -> AppTest:
     return app
 
 
+def fake_api(test: unittest.TestCase, **fakes: mock.Mock) -> dict[str, mock.Mock]:
+    patcher = mock.patch.multiple(api, **fakes)
+    patcher.start()
+    test.addCleanup(patcher.stop)
+    st.cache_data.clear()
+    return fakes
+
+
 def receiver_threads() -> set[threading.Thread]:
     return {t for t in threading.enumerate() if t.name == "ws-receiver" and t.is_alive()}
 
@@ -69,23 +78,21 @@ class LiveMonitorTest(unittest.TestCase):
 
 class AdminPageTest(unittest.TestCase):
     def fake_api(self, **overrides: Any) -> dict[str, mock.Mock]:
-        fakes = {
-            "admin_system": mock.Mock(return_value=SYSTEM),
-            "admin_users": mock.Mock(
-                return_value={"items": [ADMIN], "page": 1, "page_size": 100, "total": 1}
-            ),
-            "admin_update_user": mock.Mock(),
-            "list_services": mock.Mock(return_value=[]),
-            "admin_event_types": mock.Mock(return_value=["auth.login", "user.updated"]),
-            "admin_logs": mock.Mock(return_value={"items": [], "total": 0}),
-            "list_records": mock.Mock(return_value={"items": [], "total": 0}),
-            **overrides,
-        }
-        patcher = mock.patch.multiple(api, **fakes)
-        patcher.start()
-        self.addCleanup(patcher.stop)
-        st.cache_data.clear()
-        return fakes
+        return fake_api(
+            self,
+            **{
+                "admin_system": mock.Mock(return_value=SYSTEM),
+                "admin_users": mock.Mock(
+                    return_value={"items": [ADMIN], "page": 1, "page_size": 100, "total": 1}
+                ),
+                "admin_update_user": mock.Mock(),
+                "list_services": mock.Mock(return_value=[]),
+                "admin_event_types": mock.Mock(return_value=["auth.login", "user.updated"]),
+                "admin_logs": mock.Mock(return_value={"items": [], "total": 0}),
+                "list_records": mock.Mock(return_value={"items": [], "total": 0}),
+                **overrides,
+            },
+        )
 
     def test_other_roles_get_a_notice_and_no_admin_call(self) -> None:
         fakes = self.fake_api()
@@ -134,6 +141,30 @@ class AdminPageTest(unittest.TestCase):
 
         fakes["admin_update_user"].assert_called_once_with("token", 1, {"is_active": False})
         self.assertEqual([e.value for e in app.error], [REFUSAL])
+
+
+class AnalyticsPageTest(unittest.TestCase):
+    def fake_api(self) -> dict[str, mock.Mock]:
+        return fake_api(
+            self,
+            list_services=mock.Mock(return_value=[]),
+            analytics=mock.Mock(return_value=[]),
+            export_xlsx=mock.Mock(return_value=b"PK xlsx bytes"),
+        )
+
+    def test_the_default_window_is_the_last_24_hours(self) -> None:
+        fakes = self.fake_api()
+        app = page("3_Analytics.py", ADMIN)
+
+        app.run()
+
+        self.assertFalse(app.exception)
+        kind, params = fakes["analytics"].call_args_list[0].args[1:]
+        self.assertEqual(kind, "summary")
+        start = datetime.fromisoformat(params["start"])
+        self.assertAlmostEqual(
+            start, datetime.now(UTC) - timedelta(hours=24), delta=timedelta(minutes=1)
+        )
 
 
 if __name__ == "__main__":
