@@ -11,6 +11,7 @@ from app.ingestion.buffer import WriterState
 from app.main import app
 from app.models import AuditEvent, SystemLog
 from app.pipeline import Pipeline
+from app.services import admin as admin_service
 from tests.api.test_records import insert_record
 from tests.conftest import Identity
 
@@ -18,6 +19,12 @@ ADMIN = "/api/v1/admin"
 LOGS = f"{ADMIN}/logs"
 T0 = datetime(2026, 10, 31, 8, 0, tzinfo=UTC)
 WINDOW = {"start": T0.isoformat(), "end": (T0 + timedelta(hours=1)).isoformat()}
+
+
+@pytest.fixture(autouse=True)
+def no_cached_table_counts() -> None:
+    """Each test counts its own rows, never another test's cached counts."""
+    admin_service._table_counts.clear()
 
 
 async def add_log(
@@ -221,3 +228,20 @@ async def test_system_status_is_503_while_the_database_is_down(
 
     assert response.status_code == 503
     assert response.json()["error"]["code"] == "SERVICE_UNAVAILABLE"
+
+
+async def test_table_counts_are_reused_for_ten_seconds(
+    admin: Identity,
+    pipeline: Pipeline,
+    services: dict[str, int],
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async def traffic_rows(at: float) -> int:
+        async with session_factory() as session:
+            status = await admin_service.system_status(session, pipeline, clock=lambda: at)
+        return status.table_counts["traffic_records"]
+
+    first = await traffic_rows(100.0)
+    await insert_record(session_factory, services["auth"], admin.id)
+
+    assert (await traffic_rows(109.9), await traffic_rows(110.0)) == (first, first + 1)

@@ -1,5 +1,6 @@
 import json
 from datetime import UTC, datetime
+from typing import Any
 
 import pandas as pd
 import streamlit as st
@@ -15,6 +16,12 @@ def everything(value: str | None) -> str:
     return "全部" if value is None else value
 
 
+@st.cache_data(ttl=10, show_spinner=False)
+def system_status(token: str) -> dict[str, Any]:
+    # Every widget change reruns the page; the status block need not hit the API each time.
+    return api.admin_system(token)
+
+
 st.set_page_config(page_title="Admin", layout="wide")
 session.require_login()
 user = session.current_user() or {}
@@ -26,7 +33,7 @@ if user.get("role") != "ADMIN":
 ui.show_flash()
 
 st.header("系統狀態")
-if system := ui.call(api.admin_system):
+if system := ui.call(system_status):
     readiness, pool, generator = system["readiness"], system["pool"], system["generator"]
     tiles = st.columns(4)
     tiles[0].metric("狀態", readiness["state"])
@@ -55,6 +62,7 @@ if system := ui.call(api.admin_system):
         pd.DataFrame(sorted(system["table_counts"].items()), columns=["table", "rows"]),
         hide_index=True,
     )
+    st.caption("系統狀態最多每 10 秒更新一次；各表筆數是 10 秒內的近似值。")
 
 st.header("使用者")
 users_page = int(st.number_input("頁碼", min_value=1, max_value=10_000, value=1, key="users-page"))

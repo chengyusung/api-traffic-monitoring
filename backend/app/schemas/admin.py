@@ -92,4 +92,6 @@ class SystemStatus(BaseModel):
     readiness: Readiness
     pool: PoolStatus
     generator: GeneratorStatus
-    table_counts: dict[str, int]
+    table_counts: dict[str, int] = Field(
+        description="Rows per table, approximate within 10 s: the counts are cached in-process"
+    )

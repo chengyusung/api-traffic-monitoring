@@ -1,5 +1,9 @@
 """Admin operations (ADR-002 Admin 管理規則)."""
 
+import time
+from collections.abc import Callable
+from typing import Any
+
 from pydantic_core import to_jsonable_python
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -21,6 +25,10 @@ from app.schemas.admin import (
 )
 from app.schemas.auth import UserRead
 from app.services import audit
+
+TABLE_COUNTS_TTL_S = 10.0
+# One entry for the process: COUNT(*) reads whole tables, and the Admin page reruns often.
+_table_counts: dict[str, Any] = {}
 
 
 async def list_users(session: AsyncSession, query: Pagination) -> UserPage:
@@ -86,7 +94,15 @@ async def list_logs(session: AsyncSession, query: LogQuery) -> LogPage:
     )
 
 
-async def system_status(session: AsyncSession, pipeline: Pipeline) -> SystemStatus:
+async def _cached_table_counts(session: AsyncSession, now: float) -> dict[str, int]:
+    if not _table_counts or now - _table_counts["at"] >= TABLE_COUNTS_TTL_S:
+        _table_counts.update(at=now, counts=await system.row_counts(session))
+    return _table_counts["counts"]
+
+
+async def system_status(
+    session: AsyncSession, pipeline: Pipeline, clock: Callable[[], float] = time.monotonic
+) -> SystemStatus:
     generator = pipeline.generator
     return SystemStatus(
         # The actor was just loaded through this session, so the database is answering;
@@ -105,5 +121,5 @@ async def system_status(session: AsyncSession, pipeline: Pipeline) -> SystemStat
             paused_s=generator.paused_s,
             stopped_by=generator.stopped_by,
         ),
-        table_counts=await system.row_counts(session),
+        table_counts=await _cached_table_counts(session, clock()),
     )

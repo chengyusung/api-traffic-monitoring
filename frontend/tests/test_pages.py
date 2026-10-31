@@ -6,6 +6,7 @@ import unittest
 from typing import Any
 from unittest import mock
 
+import streamlit as st
 from streamlit.testing.v1 import AppTest
 
 os.environ.setdefault("API_BASE_URL", "http://127.0.0.1:9/api/v1")
@@ -83,6 +84,7 @@ class AdminPageTest(unittest.TestCase):
         patcher = mock.patch.multiple(api, **fakes)
         patcher.start()
         self.addCleanup(patcher.stop)
+        st.cache_data.clear()
         return fakes
 
     def test_other_roles_get_a_notice_and_no_admin_call(self) -> None:
@@ -108,6 +110,17 @@ class AdminPageTest(unittest.TestCase):
         )
         event_types = app.selectbox(key="logs-event-type").options
         self.assertEqual(event_types, ["全部", "auth.login", "user.updated"])
+
+    def test_reruns_within_ten_seconds_reuse_the_system_status(self) -> None:
+        fakes = self.fake_api()
+        app = page("4_Admin.py", ADMIN)
+
+        app.run()
+        app.run()
+
+        self.assertFalse(app.exception)
+        self.assertEqual(fakes["admin_system"].call_count, 1)
+        self.assertEqual(fakes["admin_users"].call_count, 2)
 
     def test_a_refused_change_shows_the_backend_message(self) -> None:
         refused = api.ApiError(422, "VALIDATION_ERROR", REFUSAL)
