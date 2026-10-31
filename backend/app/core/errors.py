@@ -6,6 +6,7 @@ from typing import ClassVar
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from sqlalchemy import exc as sa_exc
 from starlette.exceptions import HTTPException
 
 from app.core.logging import REQUEST_ID_HEADER
@@ -89,6 +90,11 @@ async def _validation_error(request: Request, exc: RequestValidationError) -> JS
     return _error_response(request, HTTPStatus.UNPROCESSABLE_ENTITY, "VALIDATION_ERROR", message)
 
 
+async def _database_unavailable(request: Request, exc: Exception) -> JSONResponse:
+    logger.warning("database unavailable", extra={"error": type(exc).__name__})
+    return await _app_error(request, ServiceUnavailableError("Database unavailable."))
+
+
 async def _unhandled_error(request: Request, exc: Exception) -> JSONResponse:
     logger.exception(
         "unhandled exception", extra={"request_id": getattr(request.state, "request_id", None)}
@@ -102,4 +108,7 @@ def register_error_handlers(app: FastAPI) -> None:
     app.add_exception_handler(AppError, _app_error)
     app.add_exception_handler(HTTPException, _http_error)
     app.add_exception_handler(RequestValidationError, _validation_error)
+    # Connection-level failures only: IntegrityError and DataError stay bugs or conflicts.
+    for unavailable in (sa_exc.OperationalError, sa_exc.InterfaceError, sa_exc.TimeoutError):
+        app.add_exception_handler(unavailable, _database_unavailable)
     app.add_exception_handler(Exception, _unhandled_error)

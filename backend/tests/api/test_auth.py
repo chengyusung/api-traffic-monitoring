@@ -1,6 +1,6 @@
 import base64
 import json
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 
 import jwt
@@ -222,7 +222,22 @@ async def test_authorization_uses_the_database_role_not_the_token_role(
     error(response, 403, "FORBIDDEN")
 
 
-async def test_database_outage_is_503_not_a_pass(client: AsyncClient, user_a: Identity) -> None:
+@pytest.mark.parametrize(
+    "send",
+    [
+        lambda client, user: client.get(ME, headers=user.headers),
+        lambda client, user: client.post(
+            TOKEN, data={"username": user.email, "password": PASSWORD}
+        ),
+    ],
+    ids=["GET /auth/me", "POST /auth/token"],
+)
+async def test_database_outage_is_503_not_a_pass(
+    client: AsyncClient,
+    user_a: Identity,
+    caplog: pytest.LogCaptureFixture,
+    send: Callable[[AsyncClient, Identity], Awaitable[Response]],
+) -> None:
     unreachable = make_engine("mysql+asyncmy://traffic:wrong@127.0.0.1:1/traffic_test")
 
     async def unreachable_session() -> AsyncIterator[AsyncSession]:
@@ -230,7 +245,9 @@ async def test_database_outage_is_503_not_a_pass(client: AsyncClient, user_a: Id
             yield session
 
     app.dependency_overrides[get_session] = unreachable_session
-    response = await client.get(ME, headers=user_a.headers)
+    response = await send(client, user_a)
     await unreachable.dispose()
 
     error(response, 503, "SERVICE_UNAVAILABLE")
+    logged = {(r.levelname, getattr(r, "error", None)) for r in caplog.records}
+    assert ("WARNING", "OperationalError") in logged

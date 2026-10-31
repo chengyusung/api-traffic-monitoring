@@ -1,10 +1,19 @@
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import exc
 
 from app.core.errors import NotFoundError
 from app.main import create_app
+
+DB_ERRORS: dict[str, tuple[Callable[[], Exception], int]] = {
+    "OperationalError": (lambda: exc.OperationalError("SELECT 1", None, Exception("lost")), 503),
+    "InterfaceError": (lambda: exc.InterfaceError("SELECT 1", None, Exception("closed")), 503),
+    "pool TimeoutError": (lambda: exc.TimeoutError("QueuePool limit reached"), 503),
+    "IntegrityError": (lambda: exc.IntegrityError("INSERT", None, Exception("1452")), 500),
+    "DataError": (lambda: exc.DataError("INSERT", None, Exception("1406")), 500),
+}
 
 
 @pytest.fixture
@@ -18,6 +27,10 @@ async def probe() -> AsyncIterator[AsyncClient]:
     @app.get("/probe/items")
     async def items(limit: int) -> None:
         return None
+
+    @app.get("/probe/db/{name}")
+    async def database_error(name: str) -> None:
+        raise DB_ERRORS[name][0]()
 
     @app.get("/probe/crash")
     async def crash() -> None:
@@ -69,6 +82,19 @@ async def test_unhandled_exception_is_500_without_internal_details(probe: AsyncC
     assert error["code"] == "INTERNAL_SERVER_ERROR"
     assert error["request_id"] == response.headers["X-Request-ID"]
     assert "hunter2" not in response.text
+
+
+@pytest.mark.parametrize("name", DB_ERRORS)
+async def test_only_connection_level_database_errors_are_503(probe: AsyncClient, name: str) -> None:
+    status = DB_ERRORS[name][1]
+
+    response = await probe.get(f"/probe/db/{name}")
+
+    assert response.status_code == status
+    error = envelope(response.json())
+    assert error["code"] == {503: "SERVICE_UNAVAILABLE", 500: "INTERNAL_SERVER_ERROR"}[status]
+    assert error["request_id"] == response.headers["X-Request-ID"]
+    assert "SELECT" not in response.text and "INSERT" not in response.text
 
 
 async def test_valid_incoming_request_id_is_echoed(probe: AsyncClient) -> None:
