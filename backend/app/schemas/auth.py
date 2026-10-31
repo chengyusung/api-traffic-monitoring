@@ -21,7 +21,7 @@ class UserCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     email: Email
-    password: str = Field(min_length=8)
+    password: str = Field(min_length=8, max_length=128)
 
 
 class UserRead(BaseModel):

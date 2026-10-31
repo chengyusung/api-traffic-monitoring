@@ -1,3 +1,4 @@
+import asyncio
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -13,17 +14,25 @@ ALGORITHM = "HS256"
 _hasher = PasswordHasher()  # argon2-cffi defaults to Argon2id
 # Verified when the email is unknown, so a miss costs the same time as a wrong password.
 _DUMMY_HASH = _hasher.hash(uuid.uuid4().hex)
+# Each call holds 64 MiB and about four cores for ~25 ms; a login burst waits here, not in RAM.
+_argon2_slots = asyncio.Semaphore(2)
 
 
-def hash_password(password: str) -> str:
-    return _hasher.hash(password)
+async def hash_password(password: str) -> str:
+    async with _argon2_slots:
+        return await asyncio.to_thread(_hasher.hash, password)
 
 
-def verify_password(password_hash: str | None, password: str) -> bool:
+def _verify(password_hash: str, password: str) -> bool:
     try:
-        matched = _hasher.verify(password_hash or _DUMMY_HASH, password)
+        return _hasher.verify(password_hash, password)
     except VerificationError:
         return False
+
+
+async def verify_password(password_hash: str | None, password: str) -> bool:
+    async with _argon2_slots:
+        matched = await asyncio.to_thread(_verify, password_hash or _DUMMY_HASH, password)
     return matched and password_hash is not None
 
 

@@ -47,7 +47,11 @@ async def bootstrap_admin(
             "ADMIN_EMAIL belongs to an existing non-admin user; refusing to promote."
         )
     session.add(
-        User(email=email, password_hash=hash_password(password.get_secret_value()), role=Role.ADMIN)
+        User(
+            email=email,
+            password_hash=await hash_password(password.get_secret_value()),
+            role=Role.ADMIN,
+        )
     )
     await session.commit()
     return True
@@ -64,7 +68,9 @@ async def seed_demo(
         if await users.get_by_email(session, email) is None:
             session.add(
                 User(
-                    email=email, password_hash=hash_password(password.get_secret_value()), role=role
+                    email=email,
+                    password_hash=await hash_password(password.get_secret_value()),
+                    role=role,
                 )
             )
             created.append(email)

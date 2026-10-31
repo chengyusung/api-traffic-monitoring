@@ -68,8 +68,11 @@ async def test_register_rejects_privilege_fields(
         assert await session.scalar(select(User.id)) is None
 
 
-async def test_register_rejects_short_password(client: AsyncClient) -> None:
-    response = await client.post(REGISTER, json={"email": "a@example.com", "password": "1234567"})
+@pytest.mark.parametrize("password", ["1234567", "p" * 129], ids=["7 chars", "129 chars"])
+async def test_register_rejects_password_length_outside_8_to_128(
+    client: AsyncClient, password: str
+) -> None:
+    response = await client.post(REGISTER, json={"email": "a@example.com", "password": password})
 
     error(response, 422, "VALIDATION_ERROR")
 

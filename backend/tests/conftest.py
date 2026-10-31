@@ -108,7 +108,7 @@ async def inserted(
 ) -> Identity:
     """ADMIN and VIEWER cannot come from registration, so they are inserted like bootstrap does."""
     async with session_factory() as session:
-        user = User(email=email, password_hash=hash_password(PASSWORD), role=role)
+        user = User(email=email, password_hash=await hash_password(PASSWORD), role=role)
         session.add(user)
         await session.commit()
     return Identity(user.id, email, await log_in(client, email))

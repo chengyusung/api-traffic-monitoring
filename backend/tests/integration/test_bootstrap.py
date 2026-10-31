@@ -39,7 +39,7 @@ async def test_bootstrap_admin_runs_once(
         assert await users_by_email(session) == {"admin@example.com": Role.ADMIN}
         admin = await session.scalar(select(User))
         assert admin is not None
-        assert verify_password(admin.password_hash, SECRET.get_secret_value())
+        assert await verify_password(admin.password_hash, SECRET.get_secret_value())
 
 
 async def test_bootstrap_admin_refuses_to_promote_an_existing_user(

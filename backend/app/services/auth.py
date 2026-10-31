@@ -11,7 +11,10 @@ from app.services import audit
 
 async def register(session: AsyncSession, data: UserCreate) -> User:
     user = User(
-        email=data.email, password_hash=hash_password(data.password), role=Role.USER, is_active=True
+        email=data.email,
+        password_hash=await hash_password(data.password),
+        role=Role.USER,
+        is_active=True,
     )
     session.add(user)
     await flush_or_conflict(session, "Email is already registered.")
@@ -31,7 +34,7 @@ async def register(session: AsyncSession, data: UserCreate) -> User:
 async def login(session: AsyncSession, email: str, password: str) -> str:
     email = normalize_email(email)[:255]
     user = await users.get_by_email(session, email)
-    verified = verify_password(user.password_hash if user else None, password)
+    verified = await verify_password(user.password_hash if user else None, password)
     if user is None or not verified or not user.is_active:
         audit.record_event(
             session,
