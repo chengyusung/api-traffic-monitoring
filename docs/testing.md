@@ -81,7 +81,7 @@ docker compose exec api ruff check . && docker compose exec api ruff format --ch
 
 環境：macOS，Podman 5.7 經由 docker CLI 執行 `docker compose`，MariaDB 11.7。除 DEP-03b 外，所有 PASS 的 commit 是 `bcaf2eb`（M04 與 M05 修正後），日期 2026-11-01（stack 時鐘 2026-10-31 UTC）；DEP-03b 仍是 `f31f41f`。Docker Engine 沒有在本機測過。測試數量：後端 394 個（pytest 收集：`-k timezone` 2 passed + 392 deselected，在 api 容器內），前端 17 個（主機上跑 unittest）。
 
-驗收結果：18 個案例完整 PASS，DEP-03 的 a（全新 volume）與 b（既有 volume）都 PASS，0 個 FAIL，另有 CI-01 尚未執行（GitHub Actions 在 push 之後才會跑，workflow 是 `.github/workflows/ci.yml`）。
+驗收結果：19 個案例完整 PASS（DEP-03 的 a 在 bcaf2eb、b 在 f31f41f，兩半都 PASS），0 個 FAIL，另有 CI-01 尚未執行（GitHub Actions 在 push 之後才會跑，workflow 是 `.github/workflows/ci.yml`）。
 
 | ID | 狀態 | 備註 |
 |---|---|---|
