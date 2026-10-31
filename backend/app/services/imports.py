@@ -198,7 +198,7 @@ async def import_file(
         await session.rollback()
 
     # The batch row is its own transaction, so a rejected file is still recorded.
-    # ponytail: if this commit fails after the data committed, the client sees 503 and a retry
+    # Known gap: if this commit fails after the data committed, the client sees 503 and a retry
     # duplicates rows whose event_id was blank; the window is two back-to-back commits.
     failed_rows = len({e["row"] for e in errors if e["row"] is not None})
     batch = ImportBatch(
