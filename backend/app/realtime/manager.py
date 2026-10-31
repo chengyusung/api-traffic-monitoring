@@ -51,6 +51,10 @@ class ConnectionManager:
         """Sockets holding a slot, including those still being closed."""
         return len(self._connections)
 
+    @property
+    def full(self) -> bool:
+        return len(self._connections) >= self._max_connections
+
     def broadcast(self, message: str) -> None:
         """Never awaits: a full queue drops that one client instead of slowing the caller."""
         for connection in list(self._connections):
@@ -63,7 +67,7 @@ class ConnectionManager:
 
     async def serve(self, websocket: WebSocket, expires_at: datetime, status: str) -> None:
         """Run an accepted, authenticated socket until the client leaves or is closed."""
-        if len(self._connections) >= self._max_connections:
+        if self.full:
             await websocket.close(CloseCode.TRY_AGAIN_LATER)
             return
         connection = _Connection(websocket, expires_at, asyncio.Queue(self._queue_size))

@@ -10,6 +10,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.api.deps import get_pipeline
+from app.db import get_session, make_engine
 from app.main import app
 from app.models import TrafficRecord, User
 from app.pipeline import Pipeline
@@ -135,6 +136,43 @@ async def test_connections_beyond_the_cap_are_closed_with_1013(
             await opened(second)
             assert await close_code(second) == 1013
         assert pipeline.manager.active_connections == 1
+
+
+async def test_the_cap_is_checked_before_the_user_is_reloaded(
+    pipeline: Pipeline, viewer: Identity, session_factory: async_sessionmaker[AsyncSession]
+) -> None:
+    pipeline.manager = ConnectionManager(max_connections=1, queue_size=10, send_timeout_s=5)
+    async with connect(viewer.headers) as first:
+        await opened(first)
+        await next_json(first)
+        async with session_factory() as session:
+            user = await session.get(User, viewer.id)
+            assert user is not None
+            user.is_active = False
+            await session.commit()
+
+        async with connect(viewer.headers) as second:
+            await opened(second)
+            assert await close_code(second) == 1013, "a user reload would have answered 4401"
+
+
+async def test_a_handshake_while_the_database_is_down_is_closed_with_1013(
+    pipeline: Pipeline, viewer: Identity
+) -> None:
+    unreachable = make_engine("mysql+asyncmy://traffic:wrong@127.0.0.1:1/traffic_test")
+
+    async def unreachable_session() -> AsyncIterator[AsyncSession]:
+        async with AsyncSession(unreachable) as session:
+            yield session
+
+    app.dependency_overrides[get_session] = unreachable_session
+    try:
+        async with connect(viewer.headers) as received:
+            await opened(received)
+            assert await close_code(received) == 1013
+    finally:
+        await unreachable.dispose()
+    assert pipeline.manager.active_connections == 0
 
 
 async def test_events_reach_the_client_before_they_are_committed(

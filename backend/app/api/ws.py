@@ -14,9 +14,13 @@ async def traffic(websocket: WebSocket, session: Session, pipeline: CurrentPipel
     scheme, token = get_authorization_scheme_param(websocket.headers.get("Authorization"))
     rejection: CloseCode | None = None
     try:
-        if scheme.lower() != "bearer" or not token:
-            raise UnauthorizedError("Not authenticated.")
-        _, claims = await authenticate(token, session)
+        if pipeline.manager.full:
+            # Before the user reload: a socket refused at the cap costs no database round trip.
+            rejection = CloseCode.TRY_AGAIN_LATER
+        elif scheme.lower() != "bearer" or not token:
+            rejection = CloseCode.UNAUTHORIZED
+        else:
+            _, claims = await authenticate(token, session)
     except UnauthorizedError:
         rejection = CloseCode.UNAUTHORIZED
     except DATABASE_UNAVAILABLE:

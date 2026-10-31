@@ -38,7 +38,7 @@ Live Monitor 要每秒呈現三個 Service 的觀測與異常。歷史資料由 
 
 沒有 `id` 與 `persisted_at`，因為推送時尚未 commit。另有 `{"type": "status", "state": "HEALTHY|DEGRADED|UNAVAILABLE", "total_uncommitted": 12}`，在連線建立時送一次、之後狀態變化時推送。不做 heartbeat：正常每秒有三則訊息，client 以「超過 10 秒無訊息」判定 stale。
 
-**認證**：handshake 時以 `Authorization: Bearer <jwt>` header 驗證。Streamlit server 是 WS client，可以帶 header；token 不放 URL，避免進 proxy / access log。驗證失敗以 close code `4401` 拒絕。Connection Manager 記錄每個連線的 `exp`，每次 send 前檢查，到期即 close `4401`，client 提示重新登入。
+**認證**：handshake 時以 `Authorization: Bearer <jwt>` header 驗證。Streamlit server 是 WS client，可以帶 header；token 不放 URL，避免進 proxy / access log。驗證失敗以 close code `4401` 拒絕。Handshake 時 DB 不可用、無法重讀 user，則以 close `1013`（Try Again Later）拒絕，與超過連線上限相同；連線上限在重讀 user 之前檢查。Connection Manager 記錄每個連線的 `exp`，每次 send 前檢查，到期即 close `4401`，client 提示重新登入。
 
 **慢速 / 失敗 client 隔離**：每個連線一個 `asyncio.Queue(maxsize=100)` 與一個 sender task；broadcast 只對每個連線做 `put_nowait`，滿了就 close `1008` 並清理。單一連線的 send 失敗只移除該連線，不影響其他連線、Writer 或 reservation。零 client 時 Generator / Writer 照常運作。連線上限 100，超過拒絕。
 
@@ -58,7 +58,7 @@ Live Monitor 要每秒呈現三個 Service 的觀測與異常。歷史資料由 
 ## Consequences
 
 - 得到：即時畫面與持久化解耦；DB 故障期間已連線的 Live 可以持續到 buffer 滿為止；慢 client 不拖累全體。
-- 付出：Live 與 Analytics 暫時不一致（正常約 5 秒）；process crash 時已顯示的事件可能消失；斷線區間無 replay。
+- 付出：Live 與 Analytics 暫時不一致（正常約 5 秒）；process crash 時已顯示的事件可能消失；斷線區間無 replay；DB 故障期間無法建立新連線（`1013`），已建立的連線不受影響。
 - 測試用 barrier 暫停 Writer，證明 client 先收到、DB 尚無該事件；見 [testing.md](../testing.md) WS-*。
 
 ## Open items（已知未做，不是待定）
