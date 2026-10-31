@@ -6,6 +6,8 @@ import requests
 
 API_BASE_URL = os.environ["API_BASE_URL"]
 TIMEOUT_SECONDS = 5
+# An import of 10,000 rows or an export of 50,000 takes seconds, not milliseconds.
+TRANSFER_TIMEOUT_SECONDS = 60
 
 # Codes a user can act on; any other error shows the backend's own message.
 _MESSAGES = {
@@ -17,26 +19,46 @@ _MESSAGES = {
 
 
 class ApiError(Exception):
-    def __init__(self, status: int, code: str, message: str) -> None:
+    def __init__(
+        self, status: int, code: str, message: str, details: list[dict[str, Any]] | None = None
+    ) -> None:
         super().__init__(message)
         self.status = status
         self.code = code
         self.message = message
+        # Import row errors: [{"row", "field", "message"}].
+        self.details = details
 
 
 def describe(error: ApiError) -> str:
     return _MESSAGES.get(error.code, error.message)
 
 
-def _json(response: requests.Response) -> Any:
+def _check(response: requests.Response) -> requests.Response:
     if response.ok:
-        return response.json()
+        return response
     try:
         error = response.json()["error"]
         code, message = str(error["code"]), str(error["message"])
-    except (ValueError, KeyError, TypeError):
-        code, message = "HTTP_ERROR", f"HTTP {response.status_code}"
-    raise ApiError(response.status_code, code, message)
+        details = error.get("details")
+    except (ValueError, KeyError, TypeError, AttributeError):
+        code, message, details = "HTTP_ERROR", f"HTTP {response.status_code}", None
+    raise ApiError(response.status_code, code, message, details)
+
+
+def _json(response: requests.Response) -> Any:
+    return _check(response).json()
+
+
+def _auth(token: str) -> dict[str, str]:
+    return {"Authorization": f"Bearer {token}"}
+
+
+def _get(token: str, path: str, params: dict[str, Any] | None = None) -> Any:
+    response = requests.get(
+        f"{API_BASE_URL}{path}", params=params, headers=_auth(token), timeout=TIMEOUT_SECONDS
+    )
+    return _json(response)
 
 
 def login(email: str, password: str) -> str:
@@ -49,10 +71,49 @@ def login(email: str, password: str) -> str:
 
 
 def me(token: str) -> dict[str, Any]:
-    response = requests.get(
-        f"{API_BASE_URL}/auth/me",
-        headers={"Authorization": f"Bearer {token}"},
+    return _get(token, "/auth/me")
+
+
+def list_services(token: str) -> list[dict[str, Any]]:
+    return _get(token, "/services")
+
+
+def list_records(token: str, params: dict[str, Any]) -> dict[str, Any]:
+    return _get(token, "/records", params)
+
+
+def create_record(token: str, record: dict[str, Any]) -> dict[str, Any]:
+    response = requests.post(
+        f"{API_BASE_URL}/records", json=record, headers=_auth(token), timeout=TIMEOUT_SECONDS
+    )
+    return _json(response)
+
+
+def update_record(token: str, record_id: int, changes: dict[str, Any]) -> dict[str, Any]:
+    response = requests.patch(
+        f"{API_BASE_URL}/records/{record_id}",
+        json=changes,
+        headers=_auth(token),
         timeout=TIMEOUT_SECONDS,
+    )
+    return _json(response)
+
+
+def delete_record(token: str, record_id: int) -> bool:
+    _check(
+        requests.delete(
+            f"{API_BASE_URL}/records/{record_id}", headers=_auth(token), timeout=TIMEOUT_SECONDS
+        )
+    )
+    return True
+
+
+def import_file(token: str, filename: str, content: bytes) -> dict[str, Any]:
+    response = requests.post(
+        f"{API_BASE_URL}/imports",
+        files={"file": (filename, content)},
+        headers=_auth(token),
+        timeout=TRANSFER_TIMEOUT_SECONDS,
     )
     return _json(response)
 
