@@ -243,7 +243,7 @@ curl -s "localhost:8000/api/v1/analytics/summary?service=payment" -H "Authorizat
 
 我負責：需求拆解與 scope 取捨、三份 ADR 的決策、[`CLAUDE.md`](CLAUDE.md) 的規範與禁止事項、測試計畫，以及最後的審查與答辯。這些文件在寫任何程式之前，由我在 AI 協助下寫成。
 
-AI 負責：每個 milestone 的實作。coding agent 依一份寫好的任務說明（範圍、退出條件、硬規則）逐個 milestone 實作，包含程式、測試與 migration。每個 milestone 合併前，另一個獨立的 reviewer 重新驗證：在真實 MariaDB 上 `docker compose up`、在 api 容器內跑 pytest、用 curl 對照驗收步驟。認證（M02）與即時推送（M03）兩個 milestone 另外做了一次多模型對抗審查，採納與駁回的項目記在 [`docs/ai-review-log.md`](docs/ai-review-log.md) 的 R-005、R-006。
+AI 負責：每個 milestone 的實作。coding agent 依一份寫好的任務說明（範圍、退出條件、硬規則）逐個 milestone 實作，包含程式、測試與 migration。每個 milestone 合併前，由另一個 AI coordinator session（不是人）重新驗證：在真實 MariaDB 上 `docker compose up`、在 api 容器內跑 pytest、用 curl 對照驗收步驟。我沒有逐個 milestone 審查；我看最後的結果，並為它負責。review log 引用的 mutation 檢查（改壞程式確認測試會失敗）是實作的 agent 自己跑的，沒有被獨立重跑。認證（M02）與即時推送（M03）兩個 milestone 另外做了一次多模型對抗審查，採納與駁回的項目記在 [`docs/ai-review-log.md`](docs/ai-review-log.md) 的 R-005、R-006。
 
 審查過程中發現並修正的問題逐筆記在 [`docs/ai-review-log.md`](docs/ai-review-log.md)，目前有 R-001 到 R-008。AI 第一版正確的部分也記錄驗證了什麼，不編造錯誤。
 
