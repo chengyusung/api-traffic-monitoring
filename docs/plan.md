@@ -2,7 +2,7 @@
 
 - 截止：2026-11-01 17:00
 - 原則：先讓一條 end-to-end 路徑可操作，再往外加。每個 milestone 結束時系統可以啟動、可以驗證，再進下一個。
-- 工具：coding agent 依 [CLAUDE.md](../CLAUDE.md) 工作；每個 milestone 一組 commit，commit message 寫「做了什麼、怎麼驗證」；審查結果記到 [ai-review-log.md](ai-review-log.md)。
+- 工具：coding agent 依 [CLAUDE.md](../CLAUDE.md) 工作；每個 milestone 一組 commit，commit 是單行 Conventional Commits subject，驗證記在 [ai-review-log.md](ai-review-log.md) 與 [testing.md](testing.md)；審查結果記到 [ai-review-log.md](ai-review-log.md)。
 
 ## 優先級
 
