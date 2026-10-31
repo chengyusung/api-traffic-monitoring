@@ -46,6 +46,11 @@ class ConflictError(AppError):
     code = "CONFLICT"
 
 
+class UnprocessableError(AppError):
+    status_code = HTTPStatus.UNPROCESSABLE_ENTITY
+    code = "VALIDATION_ERROR"
+
+
 class ServiceUnavailableError(AppError):
     status_code = HTTPStatus.SERVICE_UNAVAILABLE
     code = "SERVICE_UNAVAILABLE"
