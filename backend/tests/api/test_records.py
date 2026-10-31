@@ -431,11 +431,11 @@ async def test_bulk_creates_every_item_with_the_same_rules(
 
 
 @pytest.mark.parametrize(
-    "bad_tail",
+    ("bad_tail", "status"),
     [
-        [new_record(value=-1)],
-        [new_record(service_slug="unknown")],
-        [new_record(event_id="00000000-0000-4000-8000-000000000001")] * 2,
+        ([new_record(value=-1)], 422),
+        ([new_record(service_slug="unknown")], 422),
+        ([new_record(event_id="00000000-0000-4000-8000-000000000001")] * 2, 409),
     ],
     ids=["invalid item", "unknown service", "duplicate event_id in batch"],
 )
@@ -445,12 +445,13 @@ async def test_bulk_is_all_or_nothing(
     user_a: Identity,
     session_factory: async_sessionmaker[AsyncSession],
     bad_tail: list[dict[str, Any]],
+    status: int,
 ) -> None:
     items = [new_record(), new_record(), *bad_tail]
 
     response = await client.post(f"{RECORDS}/bulk", json=items, headers=user_a.headers)
 
-    assert response.status_code in (409, 422)
+    assert response.status_code == status
     assert await record_count(session_factory) == 0
 
 

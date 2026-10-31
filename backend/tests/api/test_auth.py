@@ -9,11 +9,12 @@ from httpx import AsyncClient, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.core.config import settings
 from app.core.security import create_access_token
 from app.db import get_session, make_engine
 from app.main import app
 from app.models import Role, SystemLog, User
-from tests.conftest import PASSWORD, Identity
+from tests.conftest import PASSWORD, Identity, log_in
 
 REGISTER = "/api/v1/auth/register"
 TOKEN = "/api/v1/auth/token"
@@ -79,14 +80,17 @@ async def test_register_rejects_password_length_outside_8_to_128(
     error(response, 422, "VALIDATION_ERROR")
 
 
-async def test_register_duplicate_email_is_409_case_insensitively(
-    client: AsyncClient, user_a: Identity
+async def test_register_duplicate_email_is_409_case_insensitively_and_not_audited(
+    client: AsyncClient, user_a: Identity, session_factory: async_sessionmaker[AsyncSession]
 ) -> None:
+    audited_before = len(await audit_rows(session_factory, "auth.register"))
+
     response = await client.post(
         REGISTER, json={"email": user_a.email.upper(), "password": PASSWORD}
     )
 
     error(response, 409, "CONFLICT")
+    assert len(await audit_rows(session_factory, "auth.register")) == audited_before
 
 
 async def test_login_returns_a_bearer_token_and_audits_success(
@@ -108,7 +112,19 @@ async def test_token_claims_follow_adr_002(user_a: Identity) -> None:
     assert jwt.get_unverified_header(token)["alg"] == "HS256"
     assert claims.keys() == {"sub", "role", "exp", "iat", "jti"}
     assert claims["sub"] == str(user_a.id)
-    assert claims["exp"] - claims["iat"] == 8 * 3600
+    assert claims["exp"] - claims["iat"] == settings.access_token_expire_minutes * 60
+
+
+async def test_token_lifetime_follows_the_setting(
+    client: AsyncClient, user_a: Identity, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(settings, "access_token_expire_minutes", 30)
+
+    headers = await log_in(client, user_a.email)
+
+    token = headers["Authorization"].removeprefix("Bearer ")
+    claims = jwt.decode(token, options={"verify_signature": False})
+    assert claims["exp"] - claims["iat"] == 30 * 60
 
 
 async def test_login_failures_are_identical_401s_and_audited(
@@ -199,6 +215,25 @@ def unsigned_token(user_id: int) -> str:
     return f"{b64({'alg': 'none', 'typ': 'JWT'})}.{b64(claims)}."
 
 
+def claims_for(user_id: int) -> dict[str, object]:
+    now = datetime.now(UTC)
+    expires = now + timedelta(hours=1)
+    return {"sub": str(user_id), "role": "USER", "iat": now, "exp": expires, "jti": "x"}
+
+
+def signed(claims: dict[str, object], algorithm: str = "HS256") -> dict[str, str]:
+    """Signed with the server's own secret, so only the claims or the algorithm can be wrong."""
+    token = jwt.encode(claims, settings.jwt_secret_key.get_secret_value(), algorithm)
+    return {"Authorization": f"Bearer {token}"}
+
+
+def rs256_token(user_id: int) -> str:
+    now = int(datetime.now(UTC).timestamp())
+    claims = {"sub": str(user_id), "role": "USER", "iat": now, "exp": now + 600, "jti": "x"}
+    signature = base64.urlsafe_b64encode(b"\x00" * 256).rstrip(b"=").decode()
+    return f"{b64({'alg': 'RS256', 'typ': 'JWT'})}.{b64(claims)}.{signature}"
+
+
 def foreign_token(user_id: int) -> str:
     now = datetime.now(UTC)
     claims = {"sub": str(user_id), "role": "ADMIN", "iat": now, "exp": now + timedelta(hours=1)}
@@ -213,6 +248,8 @@ def foreign_token(user_id: int) -> str:
         (lambda _: {"Authorization": "Basic dXNlcjpwYXNz"}, "UNAUTHORIZED"),
         (lambda uid: {"Authorization": f"Bearer {foreign_token(uid)}"}, "UNAUTHORIZED"),
         (lambda uid: {"Authorization": f"Bearer {unsigned_token(uid)}"}, "UNAUTHORIZED"),
+        (lambda uid: signed(claims_for(uid), "HS512"), "UNAUTHORIZED"),
+        (lambda uid: {"Authorization": f"Bearer {rs256_token(uid)}"}, "UNAUTHORIZED"),
         (
             lambda uid: {
                 "Authorization": "Bearer "
@@ -221,7 +258,16 @@ def foreign_token(user_id: int) -> str:
             "TOKEN_EXPIRED",
         ),
     ],
-    ids=["no token", "malformed", "not bearer", "wrong signature", "alg none", "expired"],
+    ids=[
+        "no token",
+        "malformed",
+        "not bearer",
+        "wrong signature",
+        "alg none",
+        "HS512",
+        "RS256",
+        "expired",
+    ],
 )
 async def test_bad_tokens_are_401(
     client: AsyncClient, user_a: Identity, make_headers: Callable[[int], dict[str, str]], code: str
@@ -229,6 +275,30 @@ async def test_bad_tokens_are_401(
     response = await client.get(ME, headers=make_headers(user_a.id))
 
     error(response, 401, code)
+
+
+@pytest.mark.parametrize("missing", ["sub", "role", "exp", "iat", "jti"])
+async def test_a_validly_signed_token_missing_a_claim_is_401(
+    client: AsyncClient, user_a: Identity, missing: str
+) -> None:
+    claims = claims_for(user_a.id)
+    accepted = await client.get(ME, headers=signed(claims))
+    del claims[missing]
+
+    response = await client.get(ME, headers=signed(claims))
+
+    assert accepted.status_code == 200, accepted.text
+    error(response, 401, "UNAUTHORIZED")
+
+
+async def test_a_validly_signed_token_with_a_non_integer_sub_is_401(
+    client: AsyncClient, user_a: Identity
+) -> None:
+    claims = {**claims_for(user_a.id), "sub": "not-a-number"}
+
+    response = await client.get(ME, headers=signed(claims))
+
+    error(response, 401, "UNAUTHORIZED")
 
 
 async def test_authorization_uses_the_database_role_not_the_token_role(
