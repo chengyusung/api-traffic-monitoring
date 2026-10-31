@@ -127,7 +127,7 @@ async def test_a_valid_token_gets_a_status_message_first(
 async def test_connections_beyond_the_cap_are_closed_with_1013(
     pipeline: Pipeline, viewer: Identity
 ) -> None:
-    pipeline.manager = ConnectionManager(max_connections=1, queue_size=10)
+    pipeline.manager = ConnectionManager(max_connections=1, queue_size=10, send_timeout_s=5)
     async with connect(viewer.headers) as first:
         await opened(first)
         await next_json(first)

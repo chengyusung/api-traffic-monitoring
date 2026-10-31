@@ -40,6 +40,7 @@ class Settings(BaseSettings):
     threshold_reload_seconds: float = Field(default=5, gt=0)
     ws_max_connections: int = Field(default=100, gt=0)
     ws_per_connection_queue: int = Field(default=100, gt=0)
+    ws_send_timeout_seconds: float = Field(default=5, gt=0)
 
     @field_validator("jwt_secret_key")
     @classmethod

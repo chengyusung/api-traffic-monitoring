@@ -69,6 +69,7 @@ class Pipeline:
         manager = ConnectionManager(
             max_connections=settings.ws_max_connections,
             queue_size=settings.ws_per_connection_queue,
+            send_timeout_s=settings.ws_send_timeout_seconds,
         )
         writer = BatchWriter(
             buffer,
