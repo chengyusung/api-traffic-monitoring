@@ -525,7 +525,9 @@ async def test_default_page_size_is_20(
     assert (len(response.json()["items"]), response.json()["total"]) == (20, 21)
 
 
-@pytest.mark.parametrize("sort", ["value", "-value", "observed_at", "created_at"])
+@pytest.mark.parametrize(
+    "sort", ["observed_at", "-observed_at", "value", "-value", "persisted_at", "-persisted_at"]
+)
 async def test_sort_breaks_ties_by_id_so_pages_are_stable(
     client: AsyncClient,
     services: dict[str, int],
@@ -533,7 +535,7 @@ async def test_sort_breaks_ties_by_id_so_pages_are_stable(
     session_factory: async_sessionmaker[AsyncSession],
     sort: str,
 ) -> None:
-    # Rows tie on value and observed_at; created_at (persisted_at) follows insert order.
+    # Rows tie on value and observed_at; persisted_at follows insert order.
     ids = [await insert_record(session_factory, services["auth"], None) for _ in range(7)]
     expected = ids[::-1] if sort.startswith("-") else ids
 
@@ -569,6 +571,7 @@ async def test_sort_by_value_descending(
         {"page": 0},
         {"page": 10001},
         {"sort": "title"},
+        {"sort": "created_at"},
         {"bogus": "1"},
         {"start": "2026-11-01T00:00:00Z", "end": "2026-10-31T00:00:00Z"},
         {"end": "9999-12-31T23:59:59-01:00"},

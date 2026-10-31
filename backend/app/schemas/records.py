@@ -19,7 +19,10 @@ def _to_utc(value: datetime) -> datetime:
 
 # Naive input is a 422; aware input is converted to UTC at the boundary.
 UTCInstant = Annotated[AwareDatetime, AfterValidator(_to_utc)]
-RecordSort = Literal["observed_at", "-observed_at", "value", "-value", "created_at", "-created_at"]
+# The only sort allowlist: each key is a TrafficRecord column; "-" means descending.
+RecordSort = Literal[
+    "observed_at", "-observed_at", "value", "-value", "persisted_at", "-persisted_at"
+]
 
 
 class RecordCreate(BaseModel):

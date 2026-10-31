@@ -171,7 +171,7 @@ CSV 欄位：`event_id,service_slug,title,value,observed_at`；JSON 為同欄位
 | Health | `GET /health/live`、`GET /health/ready` | 公開 |
 | Realtime | `WS /api/v1/ws/traffic` | 全角色（JWT） |
 
-**列表參數**：`page`（1–10,000）、`page_size`（1–100，預設 20）、`sort`（allowlist：`observed_at`、`value`、`created_at`；前綴 `-` 為 desc；預設 `-observed_at`；一律加 `id` 作穩定次排序）。Filter：`service`（slug）、`source`、`is_anomaly`、`start`、`end`（`start <= observed_at < end`；`start > end` 回 422）、`q`（title 模糊）。回覆：
+**列表參數**：`page`（1–10,000）、`page_size`（1–100，預設 20）、`sort`（allowlist：`observed_at`、`value`、`persisted_at`；前綴 `-` 為 desc；預設 `-observed_at`；一律加 `id` 作穩定次排序）。Filter：`service`（slug）、`source`、`is_anomaly`、`start`、`end`（`start <= observed_at < end`；`start > end` 回 422）、`q`（title 模糊）。回覆：
 
 ```json
 {"items": [], "page": 1, "page_size": 20, "total": 0}

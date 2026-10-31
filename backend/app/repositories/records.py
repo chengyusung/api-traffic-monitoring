@@ -6,14 +6,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models import ApiService, TrafficRecord
 from app.schemas.records import RecordFilters, RecordListQuery
 
-# traffic_records has no created_at column (architecture.md §5.1); persisted_at is when the
-# system created the row, so the `created_at` sort key orders by it.
-SORT_COLUMNS = {
-    "observed_at": TrafficRecord.observed_at,
-    "value": TrafficRecord.value,
-    "created_at": TrafficRecord.persisted_at,
-}
-
 
 async def get(session: AsyncSession, record_id: int) -> TrafficRecord | None:
     return await session.get(TrafficRecord, record_id)
@@ -42,7 +34,7 @@ async def list_page(
 ) -> tuple[Sequence[TrafficRecord], int]:
     conditions = filter_conditions(query)
     total = await session.scalar(select(func.count()).select_from(TrafficRecord).where(*conditions))
-    column = SORT_COLUMNS[query.sort.removeprefix("-")]
+    column = getattr(TrafficRecord, query.sort.removeprefix("-"))
     descending = query.sort.startswith("-")
     # id breaks ties so equal sort values page deterministically.
     order_by = (
