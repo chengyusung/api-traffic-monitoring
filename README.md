@@ -305,8 +305,14 @@ docker compose exec api ruff check . && docker compose exec api ruff format --ch
 - 匯入的資料 commit 之後，若寫 `import_batches` 失敗，client 會收到 503；沒有 `event_id` 的列重送會重複寫入。
 - Streamlit 側欄對所有角色都列出 Admin 頁；非 ADMIN 點進去只看到提示，API 本身回 403。
 - `system_logs` 沒有 `created_at` 與 `event_type` 的索引，`/admin/logs` 是掃表，demo 資料量下沒問題。`/admin/system` 每次呼叫對五張表做 count，資料量到百萬列時可能逼近 10 秒的 asyncmy `read_timeout`。
-- 前端單元測試（`WS-02` 用到的 AppTest）第一次在乾淨環境執行時，有一次因 10 秒逾時失敗，之後三次重跑都通過（0.6 到 0.7 秒），推測是冷啟動，未證實。CI 的第一次執行可能遇到同樣的情況。
+- 前端單元測試（`WS-02` 用到的 AppTest）第一次在乾淨環境執行時，有一次因 10 秒逾時失敗，之後三次重跑都通過（0.6 到 0.7 秒），推測是冷啟動，未證實。逾時已改為 30 秒，CI 的冷啟動執行沒有驗證過。
 - 瀏覽器中的實際畫面（`st.fragment(run_every=1)` 的每秒刷新、圖表外觀、檔案上傳元件）沒有驗證；自動化只到 Streamlit `AppTest`。
+- 對同一筆 record 並行的 PATCH / DELETE 沒有 row lock；並行 DELETE 可能回 500，稽核紀錄的 before 值可能是舊的。單 worker 仍會在 `await` 之間交錯，所以這不是單 worker 就能免除的問題。
+- Admin 的 PATCH 會短暫鎖住 `users` 表。
+- Writer 遇到永久錯誤後，simulator 會停止，直到 api 重啟。
+- DB 停機超過約 333 秒（1,000 筆 ÷ 每秒 3 筆）時，buffer 會滿、simulator 暫停，這段時間的取樣有缺口。
+- DB 停機期間重新整理頁面或重新登入，會失去 Live 畫面：每個需認證的 request 都回 503，新的 WebSocket 連線以 1013 拒絕。要展示故障，請先登入並開著 Live 頁，再停 DB。Streamlit receiver 本身沒有在停機期間被實際驗證過。
+- Process crash 的遺失邊界（`docker compose kill api`）沒有實際展示；「最多 1,000 筆」是設計上限，不是量測結果。
 - 未做：rate limit、refresh token、多實例、broker。
 
 ## 授權
