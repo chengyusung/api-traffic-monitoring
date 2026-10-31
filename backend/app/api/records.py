@@ -26,6 +26,7 @@ async def get_record(record_id: int, _: CurrentUser, session: Session) -> Record
 @router.post("", status_code=status.HTTP_201_CREATED)
 async def create_record(data: RecordCreate, writer: WriterRole, session: Session) -> RecordRead:
     [record] = await records.create_records(session, [data], writer)
+    await session.commit()
     return RecordRead.model_validate(record)
 
 
@@ -35,9 +36,9 @@ async def create_records_bulk(
     writer: WriterRole,
     session: Session,
 ) -> list[RecordRead]:
-    return [
-        RecordRead.model_validate(r) for r in await records.create_records(session, items, writer)
-    ]
+    created = await records.create_records(session, items, writer)
+    await session.commit()
+    return [RecordRead.model_validate(r) for r in created]
 
 
 @router.patch("/{record_id}")

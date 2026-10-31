@@ -195,9 +195,46 @@ def _describe(errors: list[RowError], failed_rows: int) -> str:
     return f"Import failed; nothing was imported.{rows} {'; '.join(shown)}{more}"
 
 
+def _add_batch(
+    session: AsyncSession, filename: str, actor_id: int, total: int, errors: list[RowError]
+) -> ImportBatch:
+    batch = ImportBatch(
+        filename=filename[:255],
+        uploaded_by=actor_id,
+        status=ImportStatus.FAILED if errors else ImportStatus.SUCCEEDED,
+        total_count=total,
+        success_count=0 if errors else total,
+        failure_count=len({e["row"] for e in errors if e["row"] is not None}),
+        errors=errors[:REPORTED_ERRORS] or None,
+    )
+    session.add(batch)
+    return batch
+
+
+def _audit(session: AsyncSession, batch: ImportBatch) -> None:
+    failed = batch.status == ImportStatus.FAILED
+    audit.record_event(
+        session,
+        AuditEvent.IMPORT_FAILED if failed else AuditEvent.IMPORT_SUCCEEDED,
+        f"import {batch.id} {batch.status}: {batch.success_count}/{batch.total_count} rows",
+        level="WARNING" if failed else "INFO",
+        actor_id=batch.uploaded_by,
+        target_type="import_batch",
+        target_id=batch.id,
+        context={
+            "filename": batch.filename,
+            "total_count": batch.total_count,
+            "success_count": batch.success_count,
+            "failure_count": batch.failure_count,
+        },
+    )
+
+
 async def import_file(
     session: AsyncSession, filename: str, content: bytes, actor: User
 ) -> ImportBatch:
+    """An accepted file commits its batch, rows and audit row together. A rejected file rolls
+    back and is recorded as a FAILED batch in a transaction of its own."""
     # A rollback below expires every loaded row, the request's User included.
     actor_id = actor.id
     services = await api_services.list_all(session)
@@ -205,11 +242,13 @@ async def import_file(
     errors, error_type = parsed.errors, UnprocessableError
     if not errors:
         errors, error_type = await _conflicts(session, parsed.rows), ConflictError
-    created = []
     if not errors:
+        batch = _add_batch(session, filename, actor_id, parsed.total, [])
+        # The id first, so every row is inserted already linked to its batch.
+        await session.flush()
         try:
-            created = await records.create_records(
-                session, [item for _, item in parsed.rows], actor, RecordSource.IMPORT
+            await records.create_records(
+                session, [item for _, item in parsed.rows], actor, RecordSource.IMPORT, batch.id
             )
         except ConflictError:
             errors = [
@@ -221,45 +260,17 @@ async def import_file(
             # A service deactivated after parse() saw it active.
             errors = [RowError(row=None, field="service_slug", message=exc.message)]
             error_type = UnprocessableError
-    if not created:
-        await session.rollback()
+        else:
+            _audit(session, batch)
+            await session.commit()
+            return batch
 
-    # The batch row is its own transaction, so a rejected file is still recorded.
-    # Known gap: if this commit fails after the data committed, the client sees 503 and a retry
-    # duplicates rows whose event_id was blank; the window is two back-to-back commits.
-    failed_rows = len({e["row"] for e in errors if e["row"] is not None})
-    batch = ImportBatch(
-        filename=filename[:255],
-        uploaded_by=actor_id,
-        status=ImportStatus.FAILED if errors else ImportStatus.SUCCEEDED,
-        total_count=parsed.total,
-        success_count=len(created),
-        failure_count=failed_rows,
-        errors=errors[:REPORTED_ERRORS] or None,
-    )
-    session.add(batch)
+    await session.rollback()
+    batch = _add_batch(session, filename, actor_id, parsed.total, errors)
     await session.flush()
-    if created:
-        await record_rows.link_import_batch(session, [r.id for r in created], batch.id)
-    audit.record_event(
-        session,
-        AuditEvent.IMPORT_FAILED if errors else AuditEvent.IMPORT_SUCCEEDED,
-        f"import {batch.id} {batch.status}: {batch.success_count}/{batch.total_count} rows",
-        level="WARNING" if errors else "INFO",
-        actor_id=actor_id,
-        target_type="import_batch",
-        target_id=batch.id,
-        context={
-            "filename": batch.filename,
-            "total_count": batch.total_count,
-            "success_count": batch.success_count,
-            "failure_count": batch.failure_count,
-        },
-    )
+    _audit(session, batch)
     await session.commit()
-    if errors:
-        raise error_type(_describe(errors, failed_rows), details=batch.errors)
-    return batch
+    raise error_type(_describe(errors, batch.failure_count), details=batch.errors)
 
 
 async def get_batch(session: AsyncSession, batch_id: int, user: User) -> ImportBatch:

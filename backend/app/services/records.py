@@ -46,8 +46,9 @@ async def create_records(
     items: Sequence[RecordCreate],
     actor: User,
     source: RecordSource = RecordSource.MANUAL,
+    import_batch_id: int | None = None,
 ) -> list[TrafficRecord]:
-    """Insert every item in one transaction, or none of them."""
+    """Flush every item into the caller's transaction, or none of them; the caller commits."""
     found = await api_services.get_by_slugs(session, (item.service_slug for item in items))
     # An inactive service takes no new records, so for writers it does not exist.
     services = {slug: service for slug, service in found.items() if service.is_active}
@@ -66,12 +67,12 @@ async def create_records(
             persisted_at=persisted_at,
             threshold_applied=services[item.service_slug].alert_threshold,
             is_anomaly=is_anomaly(item.value, services[item.service_slug].alert_threshold),
+            import_batch_id=import_batch_id,
         )
         for item in items
     ]
     session.add_all(created)
     await flush_or_conflict(session, "A record with this event_id already exists.")
-    await session.commit()
     return created
 
 

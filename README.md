@@ -302,7 +302,6 @@ docker compose exec api ruff check . && docker compose exec api ruff format --ch
 - compose 的 healthcheck 用 `CMD-SHELL`，因為 Podman 把 exec 形式的 `python -c` 引數切開。Docker Engine 上沒有驗證過，GitHub Actions 也還沒有跑過。
 - 所有 DB 連線層級錯誤與 1020（snapshot conflict）都回 503 `Database unavailable`；1020 實際上是可重送的衝突，用 409 會更精確。其他 DB 錯誤回 500。
 - `IMPORT_MAX_BYTES` 在檔案被讀取時才檢查，此時 Starlette 已經緩衝了整個上傳；要在邊界擋住過大的檔案，需要 reverse proxy 的大小限制。
-- 匯入的資料 commit 之後，若寫 `import_batches` 失敗，client 會收到 503；沒有 `event_id` 的列重送會重複寫入。
 - Streamlit 側欄對所有角色都列出 Admin 頁；非 ADMIN 點進去只看到提示，API 本身回 403。
 - `system_logs` 沒有 `created_at` 與 `event_type` 的索引，`/admin/logs` 是掃表，demo 資料量下沒問題。`/admin/system` 每次呼叫對五張表做 count，資料量到百萬列時可能逼近 10 秒的 asyncmy `read_timeout`。
 - 前端單元測試（`WS-02` 用到的 AppTest）第一次在乾淨環境執行時，有一次因 10 秒逾時失敗，之後三次重跑都通過（0.6 到 0.7 秒），推測是冷啟動，未證實。逾時已改為 30 秒，CI 的冷啟動執行沒有驗證過。

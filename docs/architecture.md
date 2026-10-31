@@ -148,13 +148,13 @@ Generator 每秒各產生一筆，負值截為 0，random seed 由 `SIMULATOR_SE
 
 ### 5.3 Import
 
-CSV / JSON 採 All-or-Nothing：先驗證所有列（欄位、Service slug、timezone、非負整數、event_id 格式與檔內重複），再以單一 transaction 寫入；任一列錯誤回報行號與原因，`traffic_records` 不新增任何資料。限制：10,000 列、5 MB。`event_id` 欄位可空，空值由 Backend 產生 UUID；若與既有資料重複，整批 409。`import_batches` 在資料 transaction 之後以獨立 transaction 寫入結果（成功或失敗都記）。
+CSV / JSON 採 All-or-Nothing：先驗證所有列（欄位、Service slug、timezone、非負整數、event_id 格式與檔內重複），再以單一 transaction 寫入；任一列錯誤回報行號與原因，`traffic_records` 不新增任何資料。限制：10,000 列、5 MB。`event_id` 欄位可空，空值由 Backend 產生 UUID；若與既有資料重複，整批 409。成功時，SUCCEEDED 的 `import_batches` 列、所有資料列與 `import.succeeded` 稽核在同一個 transaction commit。被拒時，這個 transaction 整個 rollback，再以獨立 transaction 寫入 FAILED 的 batch 與 `import.failed` 稽核（成功或失敗都記）。
 
 CSV 欄位：`event_id,service_slug,title,value,observed_at`；JSON 為同欄位的物件陣列。範例見 `data/sample_traffic.csv`、`data/sample_traffic.json`。
 
 - 行號：CSV 是檔案行號（標頭為第 1 行），JSON 是陣列中的第幾個（從 1 起算）；整個檔案的問題（大小、副檔名、編碼、標頭、列數）行號為 null。
 - 驗證失敗回 422 `VALIDATION_ERROR`，DB 已有 `event_id` 回 409 `CONFLICT`；兩者都在錯誤格式的 `details` 列出 `{row, field, message}`（最多 100 筆）。
-- `import_batches`：`failure_count` 是有錯誤的列數，`errors` 存同樣的清單。匯入的列 `source=IMPORT`、`created_by` 為上傳者，`import_batch_id` 在寫 batch 的 transaction 裡補上。
+- `import_batches`：`failure_count` 是有錯誤的列數，`errors` 存同樣的清單。匯入的列 `source=IMPORT`、`created_by` 為上傳者；batch 先 flush 取得 id，所以每一列寫入時就帶著 `import_batch_id`。
 - `GET /imports/{id}` 只有上傳者與 ADMIN 看得到，其他人一律 404。
 - `SEED_DEMO_DATA=true` 且沒有任何 `source=IMPORT` 的列時，啟動步驟以 demo USER 透過同一個匯入流程載入 `data/sample_traffic.json`（filename `seed:sample_traffic.json`）。兩個範例檔的固定 `event_id` 不重疊，所以 seed 之後手動匯入 `data/sample_traffic.csv` 仍會成功。compose 把 `data/` 掛在 api 容器的 `/data`。
 

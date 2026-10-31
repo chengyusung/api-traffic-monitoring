@@ -1,4 +1,5 @@
-"""IMP-01 on the real MariaDB: one transaction for the rows, a separate one for the batch."""
+"""IMP-01 on the real MariaDB: an accepted file commits its batch, rows and audit row together;
+a rejected one rolls back and records a FAILED batch in a transaction of its own."""
 
 from pathlib import Path
 
@@ -149,3 +150,49 @@ async def test_a_service_deactivated_mid_import_records_a_failed_batch(
     assert records == 0
     assert [(b.status, b.success_count) for b in batches] == [(ImportStatus.FAILED, 0)]
     assert [e["field"] for e in batches[0].errors or []] == ["service_slug"]
+
+
+async def test_an_event_id_inserted_after_the_pre_check_records_a_failed_batch(
+    session_factory: async_sessionmaker[AsyncSession],
+    uploader: User,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    await run_import(session_factory, uploader, SAMPLE.read_bytes())
+    records_before, _ = await counts(session_factory)
+
+    async def nothing_yet(*_: object) -> set[str]:
+        return set()
+
+    # The rows land between the pre-check and the insert, so only the unique index sees them.
+    monkeypatch.setattr(imports.record_rows, "existing_event_ids", nothing_yet)
+    with pytest.raises(ConflictError) as raised:
+        await run_import(session_factory, uploader, SAMPLE.read_bytes())
+
+    records_after, batches = await counts(session_factory)
+    assert records_after == records_before
+    assert [(b.status, b.success_count) for b in batches] == [
+        (ImportStatus.SUCCEEDED, SAMPLE_ROWS),
+        (ImportStatus.FAILED, 0),
+    ]
+    assert [(e["row"], e["field"]) for e in raised.value.details or []] == [(None, "event_id")]
+
+
+async def test_rows_batch_and_audit_row_commit_together_or_not_at_all(
+    session_factory: async_sessionmaker[AsyncSession],
+    uploader: User,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def audit_down(*_: object, **__: object) -> None:
+        raise RuntimeError("audit row not added")
+
+    monkeypatch.setattr(imports.audit, "record_event", audit_down)
+    with pytest.raises(RuntimeError, match="audit row"):
+        await run_import(session_factory, uploader, SAMPLE.read_bytes())
+
+    async with session_factory() as session:
+        unlinked = await session.scalar(
+            select(func.count())
+            .select_from(TrafficRecord)
+            .where(TrafficRecord.import_batch_id.is_(None))
+        )
+    assert (await counts(session_factory), unlinked) == ((0, []), 0)
