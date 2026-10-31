@@ -162,3 +162,52 @@ async def test_events_reach_the_client_before_they_are_committed(
     pipeline.writer.close()
     await pipeline.writer.run()
     assert await count_records(session_factory) == 3
+
+
+class StatusPolls:
+    """Stands in for the one-second status poll: the test runs one evaluation at a time."""
+
+    def __init__(self) -> None:
+        self.idle: asyncio.Queue[None] = asyncio.Queue()
+        self.go: asyncio.Queue[None] = asyncio.Queue()
+
+    async def __call__(self) -> None:
+        self.idle.put_nowait(None)
+        await self.go.get()
+
+    async def step(self) -> None:
+        """Let the loop evaluate the state once more and wait until it is idle again."""
+        self.go.put_nowait(None)
+        await self.idle.get()
+
+
+async def test_a_state_change_is_pushed_once_to_connected_clients(
+    session_factory: async_sessionmaker[AsyncSession],
+    services: dict[str, int],
+    viewer: Identity,
+) -> None:
+    polls = StatusPolls()
+    pipeline = Pipeline.create(session_factory, simulator_enabled=False, status_poll=polls)
+    app.dependency_overrides[get_pipeline] = lambda: pipeline
+    await pipeline.start()
+    try:
+        async with connect(viewer.headers) as received, asyncio.timeout(5):
+            await polls.idle.get()
+            await opened(received)
+            assert (await next_json(received))["state"] == "HEALTHY"
+
+            pipeline.writer.failed_attempts = 1  # a batch failed and awaits its retry
+            await polls.step()
+            assert (await next_json(received))["state"] == "DEGRADED"
+            await polls.step()  # unchanged: nothing is pushed
+
+            pipeline.writer.failed_attempts = 0
+            await polls.step()
+            assert (await next_json(received))["state"] == "HEALTHY"
+
+            pipeline.generator.db_ok = False  # the last threshold reload failed
+            await polls.step()
+            assert (await next_json(received))["state"] == "DEGRADED"
+            assert received.empty()
+    finally:
+        await pipeline.stop()

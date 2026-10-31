@@ -2,7 +2,7 @@
 
 import asyncio
 import logging
-from collections.abc import Coroutine
+from collections.abc import Awaitable, Callable, Coroutine
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -18,6 +18,10 @@ from app.schemas.realtime import HealthState, StatusMessage
 logger = logging.getLogger(__name__)
 
 STATUS_POLL_S = 1.0
+
+
+def wait_status_poll() -> Awaitable[None]:
+    return asyncio.sleep(STATUS_POLL_S)
 
 
 def evaluate(
@@ -50,6 +54,7 @@ class Pipeline:
     generator: Generator
     manager: ConnectionManager
     simulator_enabled: bool
+    status_poll: Callable[[], Awaitable[None]] = wait_status_poll
     _tasks: dict[str, asyncio.Task[None]] = field(default_factory=dict)
 
     @classmethod
@@ -58,6 +63,7 @@ class Pipeline:
         session_factory: async_sessionmaker[AsyncSession],
         *,
         simulator_enabled: bool = settings.simulator_enabled,
+        status_poll: Callable[[], Awaitable[None]] = wait_status_poll,
     ) -> "Pipeline":
         buffer = IngestionBuffer(settings.buffer_capacity)
         manager = ConnectionManager(
@@ -87,6 +93,7 @@ class Pipeline:
             ),
             manager=manager,
             simulator_enabled=simulator_enabled,
+            status_poll=status_poll,
         )
 
     async def start(self) -> None:
@@ -132,7 +139,8 @@ class Pipeline:
         )
 
     def status_message(self) -> str:
-        """For WebSocket clients. DB health is the last threshold reload, not a fresh probe."""
+        """For WebSocket clients: /health/ready's inputs, except that DB health is the last
+        threshold reload instead of a fresh probe."""
         return StatusMessage(
             state=self.state(db_ok=self.generator.db_ok),
             total_uncommitted=self.buffer.total_uncommitted,
@@ -145,7 +153,7 @@ class Pipeline:
             if state is not last:
                 last = state
                 self.manager.broadcast(self.status_message())
-            await asyncio.sleep(STATUS_POLL_S)
+            await self.status_poll()
 
     def _spawn(self, name: str, work: Coroutine[Any, Any, None]) -> None:
         task = asyncio.create_task(work, name=name)
