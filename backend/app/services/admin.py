@@ -3,11 +3,22 @@
 from pydantic_core import to_jsonable_python
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.errors import NotFoundError, UnprocessableError
 from app.models import AuditEvent, Role, User
-from app.repositories import users
+from app.pipeline import Pipeline
+from app.repositories import system, users
 from app.schemas import Pagination
-from app.schemas.admin import UserPage, UserUpdate
+from app.schemas.admin import (
+    GeneratorStatus,
+    LogPage,
+    LogQuery,
+    LogRead,
+    PoolStatus,
+    SystemStatus,
+    UserPage,
+    UserUpdate,
+)
 from app.schemas.auth import UserRead
 from app.services import audit
 
@@ -63,3 +74,36 @@ async def update_user(
     )
     await session.commit()
     return target
+
+
+async def list_logs(session: AsyncSession, query: LogQuery) -> LogPage:
+    rows, total = await system.log_page(session, query)
+    return LogPage(
+        items=[LogRead.model_validate(row) for row in rows],
+        page=query.page,
+        page_size=query.page_size,
+        total=total,
+    )
+
+
+async def system_status(session: AsyncSession, pipeline: Pipeline) -> SystemStatus:
+    generator = pipeline.generator
+    return SystemStatus(
+        # The actor was just loaded through this session, so the database is answering;
+        # during an outage the request is a 503 before it gets here (ADR-002).
+        readiness=pipeline.readiness(db_ok=True),
+        pool=PoolStatus(
+            status=session.get_bind().engine.pool.status(),
+            pool_size=settings.db_pool_size,
+            max_overflow=settings.db_max_overflow,
+        ),
+        generator=GeneratorStatus(
+            thresholds=None
+            if generator.services is None
+            else {service.slug: service.threshold for service in generator.services},
+            thresholds_loaded_at=generator.thresholds_loaded_at,
+            paused_s=generator.paused_s,
+            stopped_by=generator.stopped_by,
+        ),
+        table_counts=await system.row_counts(session),
+    )

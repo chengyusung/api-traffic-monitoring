@@ -3,7 +3,7 @@
 import asyncio
 import logging
 from collections.abc import Awaitable, Callable, Coroutine
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -13,7 +13,7 @@ from app.ingestion.buffer import IngestionBuffer, WriterState
 from app.ingestion.writer import BatchWriter
 from app.realtime.generator import Generator
 from app.realtime.manager import ConnectionManager
-from app.schemas.realtime import HealthState, StatusMessage
+from app.schemas.realtime import HealthState, Readiness, StatusMessage
 
 logger = logging.getLogger(__name__)
 
@@ -137,6 +137,13 @@ class Pipeline:
             retrying=self.writer.retrying,
             stalled=self.writer.stalled,
             buffer_full=self.buffer.is_full,
+        )
+
+    def readiness(self, *, db_ok: bool) -> Readiness:
+        return Readiness(
+            state=self.state(db_ok=db_ok),
+            active_connections=self.manager.active_connections,
+            **asdict(self.writer.stats()),
         )
 
     def status_message(self) -> str:
