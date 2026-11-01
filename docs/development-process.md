@@ -19,9 +19,9 @@
 | commit 數 | 118（`ca9e2c6`）。第一次驗收時是 85（`2798239`），文件合併後 88（`babd5e4`） |
 | 後端測試 | 394 passed（`11c00dc`）。第一次驗收時是 339 |
 | 前端測試 | 17 tests OK（`11c00dc`）。第一次驗收時是 11 |
-| 驗收表 | 19 PASS、1 NOT RUN（CI-01）、0 FAIL（`11c00dc`；DEP-03b 是 `e2bd097`） |
+| 驗收表 | 20 PASS、0 FAIL（19 項在 `11c00dc`，DEP-03b 是 `e2bd097`；CI-01 是 push 後的 GitHub Actions run 41273501794，`ff0cdce`） |
 
-CI-01 要在 GitHub 上跑，由擁有者 push 之後才會執行。所以 CI 是否通過，這份文件無法證明。
+CI-01 在擁有者 push 之後於 GitHub Actions 執行：run 41273501794（`ff0cdce`，2026-11-01 04:32 UTC）三個 job 都 success，lint 9 秒、test 2 分 27 秒、frontend-test 14 秒。本文件後面各節寫的 NOT RUN 是當時的狀態。
 
 ## 2. 出發點
 
@@ -437,11 +437,11 @@ M04 與 M05 的審查找到一個 critical，是匯出的公式注入與控制�
 | ANA-01 | PASS | payment 的 summary count、records total 都是 313。categories 加總 941 等於 summary。 |
 | ANA-02 | PASS | xlsx 可用 openpyxl 開，314 列，資料列 313 等於 count。 |
 | ADM-01 | PASS | viewer 升為 USER 後舊 token 可寫入，降回後 403。自我停用與降級回 422。logs 有 2 筆 `user.updated`。 |
-| CI-01 | NOT RUN | 在 GitHub 上、push 之後才會跑。 |
+| CI-01 | NOT RUN | 在 GitHub 上、push 之後才會跑。之後通過，見第 1 節。 |
 
 ### 7.1 要誠實說的幾點
 
-**CI-01 沒有執行。** workflow 在 `.github/workflows/ci.yml`，第一次驗收時只在本機跑過其中的 ruff 命令。之後每個 run step 都在本機重放過（第 7.3 節），但 GitHub Actions 本身還沒有執行。
+**CI-01 沒有執行。** workflow 在 `.github/workflows/ci.yml`，第一次驗收時只在本機跑過其中的 ruff 命令。之後每個 run step 都在本機重放過（第 7.3 節），但 GitHub Actions 本身還沒有執行。push 之後的第一次 run 通過（第 1 節）。
 
 **WS-02 有一個 flake。** 第一次（冷啟動）執行時，`AppTest` 在 10 秒逾時，11 個測試花了 25.9 秒。之後兩次 rerun 在 0.6 到 0.7 秒內通過，另外 20 次 live rerun 也都成立。驗收者把它記為 cold-start flake，沒有重現。README 也記下這件事，逾時之後已改為 30 秒，冷啟動執行沒有再驗證。M05 owner 在主機上第一次跑前端頁面測試時也看過同一個現象（第 5.5 節），兩份紀錄互相呼應，但原因都沒有被證實。
 
@@ -465,7 +465,7 @@ M04 與 M05 的審查找到一個 critical，是匯出的公式注入與控制�
 
 **為什麼重跑。** 修正輪在第一次驗收之後改了匯入、匯出、管理與 schema 的程式，驗收證據必須對應交付的 commit。coordinator 在 06:11 啟動，結果在 06:20，合併為 `ca9e2c6`。
 
-**結果。** 19 個案例 PASS，CI-01 NOT RUN，0 FAIL。流程與第一次相同，在 detached worktree 上用單一 compose stack 照 testing.md 的表依序執行，結束時 `down -v` exit 0，沒有留下容器或 volume。
+**結果。** 19 個案例 PASS，CI-01 NOT RUN（之後在 GitHub 上通過，第 1 節），0 FAIL。流程與第一次相同，在 detached worktree 上用單一 compose stack 照 testing.md 的表依序執行，結束時 `down -v` exit 0，沒有留下容器或 volume。
 
 **新增的檢查。** 匯入第一個 title 是 `=HYPERLINK("http://evil","x")` 的檔案回 201，存下的 title 等於那段文字。匯出的 xlsx 的 sheet 沒有 `<f>` 元素，那個儲存格的 data type 是 `s`，是文字。title 含 `\x01` 的匯入回 422 並指出第 3 列，筆數不變。6 MB 的上傳回 413 `PAYLOAD_TOO_LARGE`。
 
@@ -477,7 +477,7 @@ M04 與 M05 的審查找到一個 critical，是匯出的公式注入與控制�
 
 CI-01 要等 GitHub 上的 Actions 執行，所以 coordinator 在 05:11 驗證了一個替代做法。`replay.py` 解析 `ci.yml`，在本機依序執行每個 run step。所有步驟都 exit 0，包含 `ruff check`、`ruff format --check`、frontend 的 `unittest`、建立 `.env`、`docker compose up --build -d`、等待 `/health/ready`、api 容器內的 `pytest -q` 與 `down -v`。這次重放發生在修正輪之前（commit `8d7d1d6`），pytest 是 339 passed。
 
-重放與真實 runner 的差別有幾處。`actions/checkout` 用現成的 worktree，`setup-uv` 用 PATH 上的 uv 而沒有檢查版本，Docker 是 Podman 上的 docker CLI，Python 3.12 由 uv 提供。所以 CI-01 仍是 NOT RUN。剩下的風險只在 runner 環境。
+重放與真實 runner 的差別有幾處。`actions/checkout` 用現成的 worktree，`setup-uv` 用 PATH 上的 uv 而沒有檢查版本，Docker 是 Podman 上的 docker CLI，Python 3.12 由 uv 提供。所以 CI-01 當時仍是 NOT RUN。剩下的風險只在 runner 環境；push 後的真實 run 通過（第 1 節）。
 
 ### 7.4 DEP-03b 演練
 
@@ -517,7 +517,6 @@ CI-01 要等 GitHub 上的 Actions 執行，所以 coordinator 在 05:11 驗證�
 
 - **Docker Engine 上的行為。** 所有執行都在 Podman 上。
 - **乾淨 clone 照 README 跑一遍。** plan.md 的 M06 退出條件是這一項，沒有完成。
-- **GitHub Actions。** CI-01。
 - **瀏覽器中的畫面與計時刷新。** 沒有任何人看過。
 - **大資料量的行為。** `/admin/system` 與 `/admin/logs` 在百萬列時的表現是推論，沒有量測。M04 的效能數字只到 100k 列。
 - **設計階段花了多久。** 沒有記錄。

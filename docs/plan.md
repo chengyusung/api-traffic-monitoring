@@ -35,8 +35,8 @@ P0 沒完成之前不碰 P1。P1 砍得掉，P0 砍不掉。
 | M02 Auth / Records | Argon2、JWT、三角色、Ownership、Records CRUD 與 bulk、稽核完成；多模型審查的 16 項修正已納入 | 964ea67 |
 | M03 Realtime | Buffer、Writer、Generator、WebSocket 與 Live Monitor 完成；停 DB 30 秒後 drain 且 `event_id` 無重複；審查後修正 16 項 | 6fd52c2 |
 | M04 Data | CSV / JSON 匯入（All-or-Nothing）、四個 analytics endpoint、Excel、Records 與 Analytics 頁完成；之後與 M05 一起做多模型審查，採納 15 項（含匯出的公式注入與控制字元），修正在 `671ca02` 到 `11c00dc` 的 15 個 commit | 2e351e7；審查修正 671ca02 到 11c00dc |
-| M05 Admin + Tests | `/admin/*` 與 Admin 頁完成；合併時後端 339 個測試、前端 11 個測試通過。審查修正後為後端 394 個、前端 17 個（`11c00dc`），驗收表在這個 commit 重跑，19 項 PASS，CI-01 未執行 | 2798239；審查修正 671ca02 到 11c00dc |
-| M06 Delivery | 已合併。README 狀態表、`docs/testing.md` 驗收證據、review log、`.env.example`與開發經過文件完成。乾淨 clone 的完整流程與 Docker Engine 都沒有驗證過，CI-01 在 push 後才會跑 | 4f1ebb5、9b350e2、babd5e4、4cbed55、0b904b1（docs commits）；之後的文件與驗證 commit 有 f768158 到 e2bd097 的 10 個誠實性修正、a40a368（DEP-03b）、8d7d1d6（CI 步驟本機重放）、ca9e2c6（第二次驗收證據） |
+| M05 Admin + Tests | `/admin/*` 與 Admin 頁完成；合併時後端 339 個測試、前端 11 個測試通過。審查修正後為後端 394 個、前端 17 個（`11c00dc`），驗收表在這個 commit 重跑，19 項 PASS，CI-01 未執行（之後於 push 後通過，見 M06 列） | 2798239；審查修正 671ca02 到 11c00dc |
+| M06 Delivery | 已合併。README 狀態表、`docs/testing.md` 驗收證據、review log、`.env.example`與開發經過文件完成。乾淨 clone 的完整流程與 Docker Engine 都沒有驗證過，CI-01 在 push 後於 GitHub Actions 通過（run 41273501794） | 4f1ebb5、9b350e2、babd5e4、4cbed55、0b904b1（docs commits）；之後的文件與驗證 commit 有 f768158 到 e2bd097 的 10 個誠實性修正、a40a368（DEP-03b）、8d7d1d6（CI 步驟本機重放）、ca9e2c6（第二次驗收證據） |
 
 ## M03 實作順序
 
