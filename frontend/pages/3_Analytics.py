@@ -63,14 +63,16 @@ points = ui.call(api.analytics, "trends", {**params, "bucket": bucket})
 if points:
     frame = pd.DataFrame(points)
     frame["bucket_start"] = pd.to_datetime(frame["bucket_start"], utc=True)
+    # A :T tooltip is formatted in the browser's zone; the string keeps the UTC the table shows.
+    frame["bucket_start_utc"] = frame["bucket_start"].dt.strftime("%Y-%m-%d %H:%M UTC")
     # Bars, not a line: a bucket without rows is absent and a line would draw through it.
     chart = (
         alt.Chart(frame)
         .mark_bar()
         .encode(
-            x=alt.X("bucket_start:T", title=f"{bucket} (UTC)"),
+            x=alt.X("bucket_start:T", title=f"{bucket} (UTC)", scale=alt.Scale(type="utc")),
             y=alt.Y(f"{metric}:Q", title=METRICS[metric]),
-            tooltip=["bucket_start:T", *METRICS],
+            tooltip=["bucket_start_utc", *METRICS],
         )
     )
     st.altair_chart(chart, width="stretch")

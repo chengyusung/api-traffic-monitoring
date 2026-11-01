@@ -1,5 +1,6 @@
 """Run from frontend/: uv run python -m unittest tests.test_pages"""
 
+import json
 import os
 import threading
 import unittest
@@ -37,6 +38,15 @@ SYSTEM = {
         "stopped_by": None,
     },
     "table_counts": {"users": 1},
+}
+TREND = {
+    "bucket_start": "2026-10-31T08:00:00Z",
+    "count": 60,
+    "sum": 3000,
+    "avg_per_observation": 50.0,
+    "min": 40,
+    "max": 70,
+    "anomaly_count": 1,
 }
 REFUSAL = "You cannot deactivate or demote yourself."
 
@@ -201,12 +211,15 @@ class RecordsPageTest(unittest.TestCase):
 
 
 class AnalyticsPageTest(unittest.TestCase):
-    def fake_api(self) -> dict[str, mock.Mock]:
+    def fake_api(self, **overrides: Any) -> dict[str, mock.Mock]:
         return fake_api(
             self,
-            list_services=mock.Mock(return_value=[]),
-            analytics=mock.Mock(return_value=[]),
-            export_xlsx=mock.Mock(return_value=b"PK xlsx bytes"),
+            **{
+                "list_services": mock.Mock(return_value=[]),
+                "analytics": mock.Mock(return_value=[]),
+                "export_xlsx": mock.Mock(return_value=b"PK xlsx bytes"),
+                **overrides,
+            },
         )
 
     def test_the_default_window_is_the_last_24_hours(self) -> None:
@@ -235,6 +248,22 @@ class AnalyticsPageTest(unittest.TestCase):
         self.assertFalse(app.exception)
         fakes["export_xlsx"].assert_called_once()
         self.assertEqual(len(app.get("download_button")), 1)
+
+    def test_the_trend_chart_keeps_its_time_axis_and_tooltip_in_utc(self) -> None:
+        """A bucket the table shows as 08:00 UTC must not shift to the browser's zone."""
+        self.fake_api(
+            analytics=mock.Mock(
+                side_effect=lambda token, kind, params: [TREND] if kind == "trends" else []
+            )
+        )
+        app = page("3_Analytics.py", ADMIN)
+
+        app.run()
+
+        self.assertFalse(app.exception)
+        spec = json.loads(app.get("vega_lite_chart")[0].proto.spec)
+        self.assertEqual(spec["encoding"]["x"].get("scale"), {"type": "utc"})
+        self.assertIn({"field": "bucket_start_utc", "type": "nominal"}, spec["encoding"]["tooltip"])
 
 
 if __name__ == "__main__":

@@ -61,19 +61,21 @@ def live() -> None:
 
     frame = pd.DataFrame(window.values())
     frame["observed_at"] = pd.to_datetime(frame["observed_at"], utc=True)
+    # A :T tooltip is formatted in the browser's zone; the string keeps the UTC the page states.
+    frame["observed_at_utc"] = frame["observed_at"].dt.strftime("%Y-%m-%d %H:%M:%S UTC")
     latest = frame.sort_values("observed_at").groupby("service_slug").tail(1)
 
     for row in latest.sort_values("service_slug").itertuples():
         flag = " :red[**異常**]" if row.is_anomaly else ""
         st.markdown(f"{row.title}：**{row.value}**（threshold {row.threshold_applied}）{flag}")
 
-    x = alt.X("observed_at:T", title="observed_at")
+    x = alt.X("observed_at:T", title="observed_at (UTC)", scale=alt.Scale(type="utc"))
     y = alt.Y("value:Q", title="requests / s")
     lines = alt.Chart(frame).mark_line().encode(x=x, y=y, color=alt.Color("service_slug:N"))
     anomalies = (
         alt.Chart(frame[frame["is_anomaly"]])
         .mark_point(color="red", filled=True, size=80)
-        .encode(x=x, y=y, tooltip=["service_slug", "value", "threshold_applied", "observed_at"])
+        .encode(x=x, y=y, tooltip=["service_slug", "value", "threshold_applied", "observed_at_utc"])
     )
     st.altair_chart(lines + anomalies, width="stretch")
 
@@ -84,7 +86,7 @@ def live() -> None:
             x=alt.X("service_slug:N", title="service"),
             y=alt.Y("value:Q", title="latest requests / s"),
             color=alt.condition(alt.datum.is_anomaly, alt.value("red"), alt.value("steelblue")),
-            tooltip=["title", "value", "threshold_applied", "observed_at"],
+            tooltip=["title", "value", "threshold_applied", "observed_at_utc"],
         )
     )
     st.altair_chart(bars, width="stretch")
