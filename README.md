@@ -245,7 +245,7 @@ curl -s "localhost:8000/api/v1/analytics/summary?service=payment" -H "Authorizat
 
 AI 負責：每個 milestone 的實作。coding agent 依一份寫好的任務說明（範圍、退出條件、硬規則）逐個 milestone 實作，包含程式、測試與 migration。每個 milestone 合併前，由另一個 AI coordinator session（不是人）重新驗證：在真實 MariaDB 上 `docker compose up`、在 api 容器內跑 pytest、用 curl 對照驗收步驟。我沒有逐個 milestone 審查；我看最後的結果，並為它負責。review log 引用的 mutation 檢查（改壞程式確認測試會失敗）是實作的 agent 自己跑的，沒有被獨立重跑。認證（M02）、即時推送（M03）、資料與管理（M04 和 M05 一起）另外做了三輪多模型對抗審查，每輪由三個不同的模型各自獨立審查，採納與駁回的項目記在 [`docs/ai-review-log.md`](docs/ai-review-log.md) 的 R-005 到 R-008。M04 與 M05 的審查在第一次驗收之後才進行，所以修正完成後驗收表重跑了一次，現在的驗收證據都在修正後的 commit 上。
 
-審查過程中發現並修正的問題逐筆記在 [`docs/ai-review-log.md`](docs/ai-review-log.md)，目前有 R-001 到 R-008。AI 第一版正確的部分也記錄驗證了什麼，不編造錯誤。
+審查過程中發現並修正的問題逐筆記在 [`docs/ai-review-log.md`](docs/ai-review-log.md)，目前有 R-001 到 R-009。AI 第一版正確的部分也記錄驗證了什麼，不編造錯誤。
 
 Commit history 依 [`docs/plan.md`](docs/plan.md) 的 milestone 分組，commit 是 Conventional Commits 的單行標題；驗證過程與結果在 review log 與 [`docs/testing.md`](docs/testing.md)。
 

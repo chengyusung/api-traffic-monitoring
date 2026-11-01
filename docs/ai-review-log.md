@@ -155,3 +155,13 @@
   - 逐 commit：每個 commit 以 `git archive` 取出，`uvx ruff@0.17.3 check` 與 `format --check` 皆 exit 0；pytest 各 commit 都通過（依序 295、295、295、295、296、296、336、336、339 passed）。
   - 未驗證：瀏覽器中的實際畫面（`AppTest` 不會畫出來）；Streamlit 自動產生的側欄仍會列出 Admin 頁，非 ADMIN 點進去只看到提示。GitHub Actions：NOT RUN。
   - 多模型對抗審查（與 R-007 同一輪）：屬於 M05 的採納項目都已在修正輪處理。暫時錯誤清單補上 1158–1161、1203、1290、1317、1969；Writer 自己的寫入逾時移到 `is_transient()`，REST 分類裡永遠走不到的內建 `TimeoutError` 分支刪除（`ef93f5a`）。migration `0002` 加入 `system_logs (created_at, id)`、`system_logs (event_type, created_at)`、`traffic_records (observed_at)`、`users (role, is_active)`（`eeaafb6`）。`/admin/system` 的各表筆數在 api 內快取 10 秒，Admin 頁的系統狀態也快取 10 秒（`8e6552c`）。`update_user()` 鎖定後確認操作者仍是有效 ADMIN，否則回 403；沒有變更時先 rollback 釋放鎖；開頭確認 session 沒有未寫入的變更（`4acb905`）。`record_event()` 以 `AuditEvent(...)` 轉換，清單外的名稱直接 raise，`level` 統一為 `AuditLevel`（`eb8fe19`）。操作者檢查讓兩個 ADMIN 並行互降時，後到的一方回 403 而不是 422。「最後一個有效 ADMIN」因此由這個檢查加上「不能動自己」保證；原本那條規則的程式保留為 ADR-002 的明文規則，但已無法從 service 觸發。這個保留是 coordinator 的決定，理由是 ADR-002 明文列出這條規則，保留只多兩行程式，而且兩個 integration test 仍斷言至少留下一個有效 ADMIN。沒有駁回的項目。同一輪唯一的 critical 是匯出的公式注入與控制字元造成 500，屬於 M04，記在 R-007。
+
+### R-009 提交前審查（2026-11-01）
+
+- 任務：對 HEAD `572a75e` 做提交前審查：SPEC.md 逐條對照實作、兩個測試套件、lint、以真實瀏覽器走七個 demo 步驟、停 DB 再啟動的演練。審查者只讀 SPEC 與原始碼，不改程式。
+- 審查結論：沒有 P0 / P1；三項 P2。
+- 發現與修正：
+  1. JSON 匯入的數字超過 4,300 位數時，`json.loads` 丟的是 `ValueError` 而不是 `JSONDecodeError`，request 變成 500 而不是文件寫的 422 + FAILED batch（CSV 路徑早有 `_INTEGER` 擋住）。`_json_rows()` 在 `JSONDecodeError` 分支之後補 `except ValueError`；parser 單元測試加一個 4,301 位數的 `.json` 案例，API 測試加一個 422 + `GET /imports/{id}` FAILED 的案例。commit `afbdd4b`。
+  2. Live Monitor 與 Analytics 的時間軸標成 UTC，但 Vega-Lite 在瀏覽器時區建刻度，台北的瀏覽器會把 bar 畫在 API 與表格所示 bucket 的 8 小時之後。兩頁的 x 軸改用 `scale=alt.Scale(type="utc")`，tooltip 改用預先以 UTC 格式化的字串欄位；AppTest 加一個斷言 chart spec 的 x 軸 scale 為 `utc` 的測試。commit `e01937a`。瀏覽器畫面由使用者確認，尚未進行。
+  3. 已開啟的 Streamlit session 看不到角色變更：前端在登入時快取 user，之後不再呼叫 `/auth/me`，所以升級的使用者要重新登入才看得到寫入控制項，被降級的使用者保留的控制項會被 API 回 403。決定只寫文件、不改程式：API 是權威來源且每個 request 重讀角色；七步 demo 不會在 session 中途換角色；每頁多呼叫一次 `/auth/me` 會動到所有頁面測試，並在 DB 故障時多一個 503 的失敗面。README 已知限制加一條，Admin 頁的使用者表單加一行說明。commit `3690eaa`。
+- 驗證（主機，Python 3.12）：`backend` 的 `pytest tests/unit/test_import_parser.py` 40 passed；`frontend` 的 `python -m unittest` 18 tests OK（原 17 + 1）；兩個套件 `ruff check` 與 `ruff format --check` 皆 exit 0。Mutation 2 / 2 被抓到：拿掉 `except ValueError` 後新案例以 `ValueError: Exceeds the limit (4300 digits)` 失敗；拿掉 `type="utc"` 後新測試以 `None != {'type': 'utc'}` 失敗。未在主機執行：`tests/api/test_imports.py` 的新案例需要 compose 的 MariaDB，由合併後的容器內全套測試涵蓋；瀏覽器畫面未渲染。
