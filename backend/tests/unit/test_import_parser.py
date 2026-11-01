@@ -178,6 +178,12 @@ def test_an_empty_json_event_id_is_left_for_the_server(event_id: str | None) -> 
         ("upload.txt", csv_file(GOOD)),
         ("upload.csv", "\n".join([",".join(COLUMNS), GOOD]).encode("utf-16")),
         ("upload.json", b"[" * 200_000),
+        (
+            "upload.json",
+            b'[{"event_id": "", "service_slug": "payment", "title": "t", "value": '
+            + b"9" * 4301
+            + b', "observed_at": "2026-10-31T08:00:00Z"}]',
+        ),
         ("upload.csv", csv_file()),
         ("upload.csv", csv_file("", "")),
         ("upload.json", b"[]"),
@@ -188,6 +194,7 @@ def test_an_empty_json_event_id_is_left_for_the_server(event_id: str | None) -> 
         "txt",
         "utf-16",
         "deep json",
+        "huge json number",
         "header only",
         "blank rows",
         "empty array",

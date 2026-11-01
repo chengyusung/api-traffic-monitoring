@@ -73,6 +73,30 @@ async def test_a_rejected_file_returns_row_errors_in_the_error_envelope(
     assert records.json()["total"] == 0
 
 
+async def test_a_json_number_over_the_int_digit_limit_is_a_failed_batch_not_a_500(
+    client: AsyncClient, identities: dict[str, Identity], services: dict[str, int]
+) -> None:
+    user = identities["user_a"]
+    one_row = b"event_id,service_slug,title,value,observed_at\n,auth,a,1,2026-10-31T08:00:00Z\n"
+    accepted = await upload(client, user, "one.csv", one_row)
+    content = (
+        b'[{"event_id": "", "service_slug": "payment", "title": "t", "value": '
+        + b"9" * 4301
+        + b', "observed_at": "2026-10-31T08:00:00Z"}]'
+    )
+
+    rejected = await upload(client, user, "huge.json", content)
+
+    assert rejected["status"] == 422, rejected["body"]
+    error = rejected["body"]["error"]
+    assert error["code"] == "VALIDATION_ERROR"
+    assert [(d["row"], d["field"]) for d in error["details"]] == [(None, None)]
+    batch = await client.get(f"{IMPORTS}/{accepted['body']['id'] + 1}", headers=user.headers)
+    assert (batch.status_code, batch.json()["status"]) == (200, "FAILED")
+    records = await client.get("/api/v1/records", headers=user.headers)
+    assert records.json()["total"] == accepted["body"]["total_count"] == 1
+
+
 async def test_a_control_character_in_a_title_rejects_the_file(
     client: AsyncClient, identities: dict[str, Identity], services: dict[str, int]
 ) -> None:

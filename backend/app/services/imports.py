@@ -79,6 +79,9 @@ def _json_rows(text: str, max_rows: int) -> RawRows:
         data = json.loads(text)
     except json.JSONDecodeError as exc:
         raise _Rejected(None, f"invalid JSON at line {exc.lineno} column {exc.colno}") from exc
+    except ValueError as exc:
+        # A number over sys.get_int_max_str_digits() is a plain ValueError, not a JSONDecodeError.
+        raise _Rejected(None, "JSON number has too many digits") from exc
     except RecursionError as exc:
         raise _Rejected(None, "JSON is nested too deeply") from exc
     if not isinstance(data, list):
