@@ -8,18 +8,18 @@
 
 專案在約 5 小時 10 分內完成實作與驗收。計時從決策紀錄的第一列（10 月 31 日 23:37）到第一次驗收與文件交付完成的最後一列（11 月 1 日 04:47）。之後的審查、修正與第二次驗收從 05:03 到 06:20，所以到決策紀錄的最後一列（06:20）共約 6 小時 43 分。設計文件的撰寫時間不在內，因為沒有記錄。
 
-過程是一個 coordinator 加六個 implementation owner。coordinator 是一個 Claude Code session，跑在 fable 模型上。它規劃、寫任務說明（brief）、親自驗證、合併。每個 milestone 由一個獨立的 owner 在自己的 git worktree 裡實作。M01 到 M05 的 owner 用 opus。文件、投影片和獨立驗收用 sonnet。
+過程是一個 coordinator 加六個 implementation owner。coordinator 是一個 Claude Code session，跑在 fable 模型上。它規劃、寫任務說明（brief）、親自驗證、合併。每個 milestone 由一個獨立的 owner 在自己的 git worktree 裡實作。M01 到 M05 的 owner 用 opus。文件和獨立驗收用 sonnet。
 
-認證（M02）與即時推送（M03）各做了一次三模型對抗審查（opus、fable、sonnet 各一位 reviewer），再各做一輪修正。M02 的修正輪有 18 個 commit，M03 有 17 個。M04 與 M05 原本依計畫略過審查，在第一次驗收與文件交付之後才補做，一起審查，修正輪有 15 個 commit（第 5.8 節）。因為修正輪改了匯入、匯出、管理與 schema 的程式，驗收表在 `bcaf2eb` 上重跑了一次（第 7.2 節）。
+認證（M02）與即時推送（M03）各做了一次三模型對抗審查（opus、fable、sonnet 各一位 reviewer），再各做一輪修正。M02 的修正輪有 18 個 commit，M03 有 17 個。M04 與 M05 原本依計畫略過審查，在第一次驗收與文件交付之後才補做，一起審查，修正輪有 15 個 commit（第 5.8 節）。因為修正輪改了匯入、匯出、管理與 schema 的程式，驗收表在 `11c00dc` 上重跑了一次（第 7.2 節）。
 
-最終結果在 `main` 的 `f45311a`。第二次驗收的 commit 是 `bcaf2eb`（第一次驗收在 `2798239`）：
+最終結果在 `main` 的 `ca9e2c6`。第二次驗收的 commit 是 `11c00dc`（第一次驗收在 `2798239`）：
 
 | 項目 | 數字 |
 |---|---|
-| commit 數 | 120（`f45311a`）。第一次驗收時是 85（`2798239`），文件合併後 89（`9154d72`） |
-| 後端測試 | 394 passed（`bcaf2eb`）。第一次驗收時是 339 |
-| 前端測試 | 17 tests OK（`bcaf2eb`）。第一次驗收時是 11 |
-| 驗收表 | 19 PASS、1 NOT RUN（CI-01）、0 FAIL（`bcaf2eb`；DEP-03b 是 `f31f41f`） |
+| commit 數 | 118（`ca9e2c6`）。第一次驗收時是 85（`2798239`），文件合併後 88（`babd5e4`） |
+| 後端測試 | 394 passed（`11c00dc`）。第一次驗收時是 339 |
+| 前端測試 | 17 tests OK（`11c00dc`）。第一次驗收時是 11 |
+| 驗收表 | 19 PASS、1 NOT RUN（CI-01）、0 FAIL（`11c00dc`；DEP-03b 是 `e2bd097`） |
 
 CI-01 要在 GitHub 上跑，由擁有者 push 之後才會執行。所以 CI 是否通過，這份文件無法證明。
 
@@ -60,7 +60,7 @@ CI-01 要在 GitHub 上跑，由擁有者 push 之後才會執行。所以 CI �
 | 修正輪 owner（M04 與 M05） | 套用第三輪審查接受的 15 項 | 紀錄裡沒有寫 |
 | 審查者（每次 interrogate 三位） | 唯讀審查一個 commit 範圍 | opus、fable、sonnet 各一 |
 | 獨立驗收者 | 在 detached worktree 上執行驗收表 | sonnet |
-| 文件、投影片、本文件的 owner | 寫 README、投影片、本文件 | sonnet |
+| 文件與本文件的 owner | 寫 README、本文件 | sonnet |
 | 擁有者（人） | 設計、scope 取捨、`gh auth login` 與 GitHub push | 不適用 |
 
 規則有三條。coordinator 不改程式樹，只合併。每個 owner 只在自己的 worktree 工作。合併一律是 fast-forward 進本機 `main`。
@@ -89,7 +89,7 @@ CI-01 要在 GitHub 上跑，由擁有者 push 之後才會執行。所以 CI �
 依難度分配，來源是 `todo.md` 與決策紀錄：
 
 - M01 到 M05 與兩個修正輪用 opus。這些是有狀態、要處理並行與故障的實作。
-- README、testing.md、投影片、本文件與獨立驗收用 sonnet。決策紀錄寫的理由是這些是簡單工作，由擁有者指定模型分配。
+- README、testing.md、本文件與獨立驗收用 sonnet。決策紀錄寫的理由是這些是簡單工作，由擁有者指定模型分配。
 - 審查用三個模型家族各一位。決策紀錄寫「跨模型家族的共識是訊號」。
 
 ### 3.4 為什麼 M04 與 M05 起初不審查
@@ -318,9 +318,9 @@ owner 不同意或沒做的部分：REST 的 503 handler 沒有依 errno 細分�
 
 驗收者在 `2798239` 的 detached worktree 上，用單一 compose stack 照 testing.md 的表依序執行。不開並行，因為只有一個 stack。驗收者不改任何 tracked 檔案。細節在第 7 節。
 
-### 5.7 M06 文件與投影片
+### 5.7 M06 文件
 
-**時間。** 決策紀錄在 04:42 記下兩位 sonnet owner 的啟動，在 04:47 記下合併。文件 commit 的時間是 04:45。本文件的 owner 在 04:47 啟動，所以它能涵蓋前兩者。
+**時間。** 決策紀錄在 04:42 記下 README owner 的啟動，在 04:47 記下合併。文件 commit 的時間是 04:45。本文件的 owner 在 04:47 啟動，所以它能涵蓋前者。
 
 **M06a（README、testing.md、review log）。** 三個 commit（`4f1ebb5`、`9b350e2`、`babd5e4`）。README 的狀態表、開發方式、已知限制與本地運行補齊。`.env.example` 移除 `DB_HOST`、`DB_PORT`、`CORS_ORIGINS`，因為沒有程式碼讀它們。testing.md 填入驗收證據。review log 補上 R-005 與 R-006 的多模型審查項目。plan.md 加上結果表。
 
@@ -328,15 +328,13 @@ owner 驗證了本地運行的修正。舊的 README 命令 `uv run --env-file .
 
 owner 另外回報：plan.md 第 5 行仍寫 commit message 描述「做了什麼、怎麼驗證」，但 commit 其實只有 subject。這一行在同一個 branch 的另一個 commit 被改掉（見下）。
 
-**M06b（投影片）。** 一個 commit（`9154d72`）。13 張內容投影片、6 張內嵌 SVG、沒有外部資源、沒有裸色碼。這份檢查只在原始碼層級，沒有渲染。擁有者要自己在瀏覽器確認排版，尤其是第 3、4、11、12 張的高度。
+plan.md 第 5 行的修正在獨立的 commit `docs: correct the commit-message note and the timeline label`。
 
-coordinator 發現時間軸上有一個標籤錯了。驗收完成應該是 04:42，投影片寫成 05:00。決策紀錄稱這是 coordinator 自己的事實錯誤。這個標籤與 plan.md 第 5 行的修正在獨立的 commit `docs: correct the commit-message note and the timeline label`。
-
-**合併。** README 與投影片合併後 `main` 是 `9154d72`（89 個 commit）。
+**合併。** README 合併後 `main` 是 `babd5e4`（88 個 commit）。
 
 ### 5.8 M04 與 M05 的審查與修正輪
 
-**時間。** coordinator 在 05:09 派出三位 reviewer，同時派出 CI 步驟重放（第 7.3 節）。決策紀錄在 05:28 寫下審查結論。修正輪的 15 個 commit 在 05:38 到 05:55。coordinator 在 06:11 驗證並合併為 `bcaf2eb`，同一時刻開始重跑驗收（第 7.2 節）。
+**時間。** coordinator 在 05:09 派出三位 reviewer，同時派出 CI 步驟重放（第 7.3 節）。決策紀錄在 05:28 寫下審查結論。修正輪的 15 個 commit 在 05:38 到 05:55。coordinator 在 06:11 驗證並合併為 `11c00dc`，同一時刻開始重跑驗收（第 7.2 節）。
 
 **為什麼補做。** M04 與 M05 是唯一沒有對抗審查的 milestone。決策紀錄寫的理由是補上這一輪，Feature playbook 的第 7 步才涵蓋整個程式碼。審查範圍是 `6fd52c2..2798239`。
 
@@ -344,20 +342,20 @@ coordinator 發現時間軸上有一個標籤錯了。驗收完成應該是 04:4
 
 **採納的 15 項。** 一項一個 commit。
 
-- 匯出（`4de2406`）。每個文字值寫成文字儲存格，`Title` 在 schema 邊界拒絕 C0 控制字元，匯出失敗時清掉暫存檔。
-- 匯入檔案層級的錯誤（`4274f7a`）。巢狀 JSON、超過 12 位的整數、沒有資料列的檔案都回檔案層級 422。
-- 匯入的 transaction（`050b237`）。成功路徑先寫 SUCCEEDED 的 batch，再寫資料列與稽核，一次 commit。`create_records()` 不再自己 commit，由呼叫端決定交易邊界。原本 batch 與資料列分兩段 commit，中間有空檔，三位 reviewer 都指出。
-- 錯誤分類（`ef93f5a`）。暫時錯誤清單加入八個 errno。
-- 索引（`eeaafb6`）。migration `0002` 新增四個索引，涵蓋 `system_logs`、`traffic_records.observed_at` 與 `users`。
-- `/admin/system`（`8e6552c`）。各表筆數快取 10 秒。
-- 管理者權限的新鮮度（`4acb905`）。`update_user()` 鎖定之後確認操作者仍是有效 ADMIN，否則回 403。
-- 稽核事件名稱（`eb8fe19`）。`record_event()` 拒絕 `AuditEvent` 以外的名稱。
-- Analytics 頁預設最近 24 小時（`b36ebd7`）。
-- 上傳大小（`8441129`）。`Content-Length` 超過上限時，在讀 body 之前回 413。
-- 冪等碰撞（`9c739cb`）。Writer 遇到被非 SIMULATOR 列佔用的 `event_id` 時記 WARNING。
-- `observed_at`（`f35e0fe`）。拒絕 Unix time 數字。
-- M04 頁面測試（`e672883`）與覆蓋率（`7a92d3b`）。
-- 文件（`bcaf2eb`）。architecture 的行號規則、README 已知限制、review log 的 R-007 與 R-008。
+- 匯出（`671ca02`）。每個文字值寫成文字儲存格，`Title` 在 schema 邊界拒絕 C0 控制字元，匯出失敗時清掉暫存檔。
+- 匯入檔案層級的錯誤（`3b45cb4`）。巢狀 JSON、超過 12 位的整數、沒有資料列的檔案都回檔案層級 422。
+- 匯入的 transaction（`90c0d01`）。成功路徑先寫 SUCCEEDED 的 batch，再寫資料列與稽核，一次 commit。`create_records()` 不再自己 commit，由呼叫端決定交易邊界。原本 batch 與資料列分兩段 commit，中間有空檔，三位 reviewer 都指出。
+- 錯誤分類（`51b105c`）。暫時錯誤清單加入八個 errno。
+- 索引（`1f20db7`）。migration `0002` 新增四個索引，涵蓋 `system_logs`、`traffic_records.observed_at` 與 `users`。
+- `/admin/system`（`4844f04`）。各表筆數快取 10 秒。
+- 管理者權限的新鮮度（`c784177`）。`update_user()` 鎖定之後確認操作者仍是有效 ADMIN，否則回 403。
+- 稽核事件名稱（`2edd11c`）。`record_event()` 拒絕 `AuditEvent` 以外的名稱。
+- Analytics 頁預設最近 24 小時（`3b9c55d`）。
+- 上傳大小（`69aaad4`）。`Content-Length` 超過上限時，在讀 body 之前回 413。
+- 冪等碰撞（`cdc410f`）。Writer 遇到被非 SIMULATOR 列佔用的 `event_id` 時記 WARNING。
+- `observed_at`（`7791eba`）。拒絕 Unix time 數字。
+- M04 頁面測試（`2dc1d68`）與覆蓋率（`09e077b`）。
+- 文件（`11c00dc`）。architecture 的行號規則、README 已知限制、review log 的 R-007 與 R-008。
 
 **驗證。** coordinator 驗證的結果是 pytest 394 passed（修正前 339，新增 55 個），frontend 17 tests（原本 11 個），ruff 乾淨，migration `0002` 的 downgrade、upgrade 與 `alembic check` 都乾淨。用 curl 驗證的項目是 `=HYPERLINK` 的 title 匯出後是文字儲存格，含 `\x01` 的 title 回 422，巢狀 JSON 回 422，只有標頭的 CSV 回 422，6 MB 的上傳回 413，自己降級回 422。owner 另外逐 commit 跑了 pytest，349 到 394 只增不減。owner 報告的 mutation 是 43 個，42 個被抓到，這個數字是 owner 自己報的，沒有被獨立重跑。
 
@@ -365,7 +363,7 @@ coordinator 發現時間軸上有一個標籤錯了。驗收完成應該是 04:4
 
 **owner 回報的其他限制。** 「關閉 workbook」照字面做沒有效果，真正刪暫存檔的是 openpyxl 內部 sheet writer 的 `cleanup()`，程式因此用到 openpyxl 的私有屬性。C0 範圍包含 tab 與換行，所以 title 現在不能含這兩個字元。413 早於認證，沒有 token 的超大上傳拿到 413，不是 401。
 
-**合併。** `bcaf2eb`，06:11。修正輪共 15 個 commit，37 個檔案，新增約 962 行、刪除 156 行。
+**合併。** `11c00dc`，06:11。修正輪共 15 個 commit，37 個檔案，新增約 962 行、刪除 156 行。
 
 ## 6. 多模型審查
 
@@ -416,7 +414,7 @@ M04 與 M05 的審查找到一個 critical，是匯出的公式注入與控制�
 
 ## 7. 驗收結果
 
-以下是第一次驗收。驗收者是 sonnet，在 `2798239` 的 detached worktree 上跑。第二次驗收在 `bcaf2eb` 上重跑，見 7.2。它在乾淨 volume 上起一個 compose stack，`.env` 由 `.env.example` 產生並換上新的 JWT secret。原始輸出與腳本在 `accept-scratch/`。
+以下是第一次驗收。驗收者是 sonnet，在 `2798239` 的 detached worktree 上跑。第二次驗收在 `11c00dc` 上重跑，見 7.2。它在乾淨 volume 上起一個 compose stack，`.env` 由 `.env.example` 產生並換上新的 JWT secret。原始輸出與腳本在 `accept-scratch/`。
 
 | ID | 狀態 | 證據摘要 |
 |---|---|---|
@@ -463,9 +461,9 @@ M04 與 M05 的審查找到一個 critical，是匯出的公式注入與控制�
 
 **MANUAL 項目。** 這份驗收沒有任何被標成 MANUAL 的列。testing.md 的「手動 / 故障」清單中沒有執行的項目是兩個：`docker compose kill api` 後的遺失邊界展示，以及乾淨 clone 後在瀏覽器以三個帳號走完所有頁面。
 
-### 7.2 第二次驗收（`bcaf2eb`）
+### 7.2 第二次驗收（`11c00dc`）
 
-**為什麼重跑。** 修正輪在第一次驗收之後改了匯入、匯出、管理與 schema 的程式，驗收證據必須對應交付的 commit。coordinator 在 06:11 啟動，結果在 06:20，合併為 `f45311a`。
+**為什麼重跑。** 修正輪在第一次驗收之後改了匯入、匯出、管理與 schema 的程式，驗收證據必須對應交付的 commit。coordinator 在 06:11 啟動，結果在 06:20，合併為 `ca9e2c6`。
 
 **結果。** 19 個案例 PASS，CI-01 NOT RUN，0 FAIL。流程與第一次相同，在 detached worktree 上用單一 compose stack 照 testing.md 的表依序執行，結束時 `down -v` exit 0，沒有留下容器或 volume。
 
@@ -473,17 +471,17 @@ M04 與 M05 的審查找到一個 critical，是匯出的公式注入與控制�
 
 **數字的變化。** RETRY-01 停 DB 31 秒（22:14:47 停、22:15:18 啟），停機後 58 秒回 HEALTHY。之前 `count(*)` 與 `count(distinct event_id)` 皆 263，之後皆 494。WS client 在 75 秒內收到 226 則不重複事件，沒有超過 5 秒的間隔。BUF-01 取了 255 個樣本，恆等式違反 0 次，最大 `total_uncommitted` 是 180。BUF-02 看到 35 個不同的 `last_commit_at`。WS-02 是 17 個前端測試。
 
-**這一輪沒有做的事。** `observed_at` 的 epoch 數字被拒絕，只由單元測試覆蓋，驗收腳本在那一步之前中止。AUTH-04 的 token 過期與 BUF-02 的 100 筆觸發仍只由單元測試覆蓋。WS-02 沒有重做真實 api 上的 20 次 rerun。IMP-01 的第一次嘗試回 409，因為檔案的第 14 到 16 列帶有固定 `event_id`，驗收者把這三個 id 清空後才匯入成功，這與第一次驗收的發現一致。DEP-03b 沒有重跑，證據仍是 `f31f41f`。
+**這一輪沒有做的事。** `observed_at` 的 epoch 數字被拒絕，只由單元測試覆蓋，驗收腳本在那一步之前中止。AUTH-04 的 token 過期與 BUF-02 的 100 筆觸發仍只由單元測試覆蓋。WS-02 沒有重做真實 api 上的 20 次 rerun。IMP-01 的第一次嘗試回 409，因為檔案的第 14 到 16 列帶有固定 `event_id`，驗收者把這三個 id 清空後才匯入成功，這與第一次驗收的發現一致。DEP-03b 沒有重跑，證據仍是 `e2bd097`。
 
 ### 7.3 CI 步驟重放
 
-CI-01 要等 GitHub 上的 Actions 執行，所以 coordinator 在 05:11 驗證了一個替代做法。`replay.py` 解析 `ci.yml`，在本機依序執行每個 run step。所有步驟都 exit 0，包含 `ruff check`、`ruff format --check`、frontend 的 `unittest`、建立 `.env`、`docker compose up --build -d`、等待 `/health/ready`、api 容器內的 `pytest -q` 與 `down -v`。這次重放發生在修正輪之前（commit `a9aa5ba`），pytest 是 339 passed。
+CI-01 要等 GitHub 上的 Actions 執行，所以 coordinator 在 05:11 驗證了一個替代做法。`replay.py` 解析 `ci.yml`，在本機依序執行每個 run step。所有步驟都 exit 0，包含 `ruff check`、`ruff format --check`、frontend 的 `unittest`、建立 `.env`、`docker compose up --build -d`、等待 `/health/ready`、api 容器內的 `pytest -q` 與 `down -v`。這次重放發生在修正輪之前（commit `8d7d1d6`），pytest 是 339 passed。
 
 重放與真實 runner 的差別有幾處。`actions/checkout` 用現成的 worktree，`setup-uv` 用 PATH 上的 uv 而沒有檢查版本，Docker 是 Podman 上的 docker CLI，Python 3.12 由 uv 提供。所以 CI-01 仍是 NOT RUN。剩下的風險只在 runner 環境。
 
 ### 7.4 DEP-03b 演練
 
-第一次驗收沒有驗到「既有 volume 沒有 `traffic_test`」這一半，coordinator 在 05:03 派出演練（見 8.5），05:06 驗證並合併為 `44ff5d2`。
+第一次驗收沒有驗到「既有 volume 沒有 `traffic_test`」這一半，coordinator 在 05:03 派出演練（見 8.5），05:06 驗證並合併為 `a40a368`。
 
 結果是 PASS。用一個不掛載 `db/init` 的 override 在 `db-data` 上啟動，`SHOW DATABASES` 只有 `traffic`。同一個 volume 上換回正常的 stack，`traffic_test` 仍然不存在，`pytest` 在 setup 階段以 `1044 Access denied` 失敗。`down -v` 之後重新啟動，`traffic_test` 存在，`/health/ready` 回 200，16 個 health 測試通過。這證明已有 volume 的環境要 `docker compose down -v` 重建，README 也這樣寫。
 
@@ -505,9 +503,9 @@ CI-01 要等 GitHub 上的 Actions 執行，所以 coordinator 在 05:11 驗證�
 
 - 登入吞吐量受 CPU 限制（每次 Argon2 verify 約 28 ms），rate limit 是 ADR-002 的 open item。
 - `IMPORT_MAX_BYTES` 在 Starlette 已緩衝整個上傳之後才檢查。修正輪加了 `Content-Length` 的 413 檢查，但 chunked 上傳要擋在邊緣仍需要 reverse proxy。
-- 已解決。`import_batches` 的 commit 在資料 commit 之後失敗的空檔，由修正輪的單一 transaction（`050b237`）關閉。
+- 已解決。`import_batches` 的 commit 在資料 commit 之後失敗的空檔，由修正輪的單一 transaction（`90c0d01`）關閉。
 - Streamlit 側欄對所有角色都列出 Admin 頁。非 admin 只看到提示，API 一律 403。隱藏它要把 `app.py` 改成 `st.navigation`。
-- 已解決。`system_logs` 的索引由 migration `0002`（`eeaafb6`）加入。
+- 已解決。`system_logs` 的索引由 migration `0002`（`1f20db7`）加入。
 - 1020 snapshot conflict 回 503「Database unavailable」，409 會更精確。
 - `/admin/system` 每次對五張表 `count(*)`，資料量到數百萬列時可能接近 10 秒的 `read_timeout`。修正輪加了 10 秒快取，降低重複次數，沒有降低單次成本。
 - Admin 的 `PATCH` 會鎖整張 `users` 表，持續時間是毫秒等級。migration `0002` 加了 `users (role, is_active)` 的索引，這項是否因此縮小鎖定範圍，沒有量測。
@@ -521,7 +519,6 @@ CI-01 要等 GitHub 上的 Actions 執行，所以 coordinator 在 05:11 驗證�
 - **乾淨 clone 照 README 跑一遍。** plan.md 的 M06 退出條件是這一項，沒有完成。
 - **GitHub Actions。** CI-01。
 - **瀏覽器中的畫面與計時刷新。** 沒有任何人看過。
-- **投影片的排版。** 只做了原始碼檢查。
 - **大資料量的行為。** `/admin/system` 與 `/admin/logs` 在百萬列時的表現是推論，沒有量測。M04 的效能數字只到 100k 列。
 - **設計階段花了多久。** 沒有記錄。
 - **兩個 admin 的競爭規則在 live stack 上的行為。** 只有 integration test。
@@ -553,7 +550,7 @@ CI-01 要等 GitHub 上的 Actions 執行，所以 coordinator 在 05:11 驗證�
 5. **brief 說清楚目標，owner 才有偏離的空間。** M02 修正輪的第 14 項，owner 發現照字面做會產生循環 import，改成反方向，達成同一目標。coordinator 接受。如果 brief 只給步驟，這個偏離會變成錯誤。
 6. **整個 demo 流程要在計畫階段對一次。** M04 發現「匯入 sample CSV 得 201」與 §5.3 的 409 規則在已 seed 的環境互相矛盾。這個缺口到 M05 才用「seed 改用 JSON」關閉，中間多了一輪。把 plan.md 的展示流程當作一個測試腳本，在 M01 就跑一次紙上推演，可以更早發現。
 7. **用真的資料庫才找得到 1020。** M05 的 last-admin 測試在真實 MariaDB 上得到 1020，原因是 11.7 預設 `innodb_snapshot_isolation=ON`。mock 不會產生這個結果。CLAUDE.md 的規則 4 與 5（真實 MariaDB 的 integration test、mock 通過不算）在這一刻回本。
-8. **從紀錄複製數字，不要手打。** 投影片的時間軸標籤寫 05:00，實際是 04:42，決策紀錄稱之為 coordinator 的事實錯誤。plan.md 第 5 行也寫了 commit message 描述驗證，但 commit 其實只有 subject。這兩處都是 M06 owner 才發現。下一次，brief 裡的數字要從 `decisions.tsv` 用腳本產生。
+8. **從紀錄複製數字，不要手打。** plan.md 第 5 行寫了 commit message 描述驗證，但 commit 其實只有 subject，M06 owner 才發現。下一次，brief 裡的數字要從 `decisions.tsv` 用腳本產生。
 9. **在做的時候記錄，不要事後補。** 決策紀錄開頭多列的時間戳都擠在 23:37 到 23:39（含一列 `pending` 與一列取代它的列），這代表它們是批次寫入的，不是事件發生時寫的（推論）。設計文件的時間完全沒有記錄，所以最重要的前置工作無法計時。
 10. **獨立驗收者會看到 owner 與 coordinator 都沒看到的東西。** 驗收者是唯一重跑同一份 CSV 而發現第 14 到 16 列的固定 id。它也把第一次 RETRY-01 的遺失輸出標成「不採用」，而不是拿來湊證據。獨立性來自它沒有參與寫程式。
 11. **要誠實記錄沒做的事。** 瀏覽器、Docker Engine、CI、乾淨 clone 都沒做，而且 README 的已知限制與 testing.md 都寫了。這讓交付時的說法與實際相符。
@@ -579,7 +576,7 @@ CI-01 要等 GitHub 上的 Actions 執行，所以 coordinator 在 05:11 驗證�
 
 ### 10.2 commit 清單
 
-以 `git log` 為準，依 milestone 分組。`main` 在 `9154d72` 是 89 個 commit，另加本文件與更正兩個 commit。之後又有 29 個 commit，`main` 現在是 `f45311a`，共 120 個。
+以 `git log` 為準，依 milestone 分組。`main` 在 `babd5e4` 是 88 個 commit，另加本文件與更正兩個 commit。之後又有 28 個 commit，`main` 現在是 `ca9e2c6`，共 118 個。
 
 #### 設計文件（base）（1）
 
@@ -690,54 +687,52 @@ CI-01 要等 GitHub 上的 Actions 執行，所以 coordinator 在 05:11 驗證�
 - `60eac2d` fix(api): treat a MariaDB snapshot conflict (1020) as retryable like a deadlock
 - `2798239` docs: record the M05 admin contract, the errno classification and the R-008 review
 
-#### M06 文件與投影片（4）
+#### M06 文件（3）
 
 - `4f1ebb5` docs(readme): fill delivery status, development process, known limits and local run
 - `9b350e2` docs(testing): record acceptance evidence for 19 cases and leave CI-01 not run
 - `babd5e4` docs: align .env.example with Settings, add review-log findings and plan results
-- `9154d72` docs(slides): add project overview deck
 
 #### 本文件與更正
 
-- `405af99` docs: correct the commit-message note and the timeline label
+- `4cbed55` docs: correct the commit-message note and the timeline label
 
-#### 誠實性修正（11）
+#### 誠實性修正（10）
 
-- `7f583de` docs(readme): state that nothing ran on Docker Engine or GitHub Actions
-- `0912b24` docs(readme): add the JWT secret step to the quick start
-- `282a35c` docs(readme): align the delivery status table with the testing IDs and partial evidence
-- `2632500` docs(testing): make the evidence column say which half of a case ran
-- `8145e9c` docs(readme): name the AI coordinator as the per-milestone reviewer
-- `02261f9` docs(readme): list the concurrency, outage and crash-loss limits
-- `1c4b730` docs: record M06 as merged in the plan results
-- `5c2f927` docs: fix the human and agent roles on slide 9
-- `c5be1c9` docs: add evidence provenance and partial-case notes to the process record
-- `0004d47` docs: drop the stray follow-up wording from the M06 plan row
-- `f31f41f` test(frontend): raise the AppTest timeout to 30 seconds
+- `f768158` docs(readme): state that nothing ran on Docker Engine or GitHub Actions
+- `99fe2b3` docs(readme): add the JWT secret step to the quick start
+- `587c302` docs(readme): align the delivery status table with the testing IDs and partial evidence
+- `7b01915` docs(testing): make the evidence column say which half of a case ran
+- `99a1eeb` docs(readme): name the AI coordinator as the per-milestone reviewer
+- `66078d3` docs(readme): list the concurrency, outage and crash-loss limits
+- `b3f4e55` docs: record M06 as merged in the plan results
+- `27f1b83` docs: add evidence provenance and partial-case notes to the process record
+- `f33ced1` docs: drop the stray follow-up wording from the M06 plan row
+- `e2bd097` test(frontend): raise the AppTest timeout to 30 seconds
 
 #### DEP-03b 與 CI 重放的證據（2）
 
-- `44ff5d2` docs(testing): record the existing-volume half of DEP-03
-- `a9aa5ba` docs(testing): record the local replay of the CI steps
+- `a40a368` docs(testing): record the existing-volume half of DEP-03
+- `8d7d1d6` docs(testing): record the local replay of the CI steps
 
 #### M04 與 M05 審查後的修正輪（15）
 
-- `4de2406` fix(export): write text cells, reject control characters in titles and clean up a failed export
-- `4274f7a` fix(imports): reject nested JSON, long integers and empty files at file level, name masked duplicates and bound field names
-- `050b237` fix(imports): commit an accepted file's batch, rows and audit row in one transaction
-- `ef93f5a` fix(db): treat packet, read-only, interrupted-query and statement-timeout errnos as transient
-- `eeaafb6` feat(db): index system_logs, traffic_records.observed_at and the active-admin lookup
-- `8e6552c` perf(admin): cache the system table counts for 10 seconds in the api and on the Admin page
-- `4acb905` fix(admin): refuse a user change from an admin demoted after authentication and release no-op locks
-- `eb8fe19` fix(audit): refuse event types outside AuditEvent and type the level as one shared Literal
-- `b36ebd7` fix(frontend): default the Analytics window to the last 24 hours and test the trend bucket cap
-- `8441129` feat(imports): answer 413 before reading an upload whose Content-Length is over the limit
-- `9c739cb` feat(writer): warn when a simulator event_id is already stored by another source
-- `f35e0fe` fix(records): reject Unix-time numbers where an ISO 8601 instant is expected
-- `e672883` test(frontend): cover the Records and Analytics pages with AppTest
-- `7a92d3b` test(imports): cover the 100-error cap and that an import never touches the buffer or the sockets
-- `bcaf2eb` docs: record the CSV row numbering, the export and title rules and the M04/M05 multi-model review
+- `671ca02` fix(export): write text cells, reject control characters in titles and clean up a failed export
+- `3b45cb4` fix(imports): reject nested JSON, long integers and empty files at file level, name masked duplicates and bound field names
+- `90c0d01` fix(imports): commit an accepted file's batch, rows and audit row in one transaction
+- `51b105c` fix(db): treat packet, read-only, interrupted-query and statement-timeout errnos as transient
+- `1f20db7` feat(db): index system_logs, traffic_records.observed_at and the active-admin lookup
+- `4844f04` perf(admin): cache the system table counts for 10 seconds in the api and on the Admin page
+- `c784177` fix(admin): refuse a user change from an admin demoted after authentication and release no-op locks
+- `2edd11c` fix(audit): refuse event types outside AuditEvent and type the level as one shared Literal
+- `3b9c55d` fix(frontend): default the Analytics window to the last 24 hours and test the trend bucket cap
+- `69aaad4` feat(imports): answer 413 before reading an upload whose Content-Length is over the limit
+- `cdc410f` feat(writer): warn when a simulator event_id is already stored by another source
+- `7791eba` fix(records): reject Unix-time numbers where an ISO 8601 instant is expected
+- `2dc1d68` test(frontend): cover the Records and Analytics pages with AppTest
+- `09e077b` test(imports): cover the 100-error cap and that an import never touches the buffer or the sockets
+- `11c00dc` docs: record the CSV row numbering, the export and title rules and the M04/M05 multi-model review
 
 #### 第二次驗收的證據（1）
 
-- `f45311a` docs(testing): refresh acceptance evidence after the review fixes
+- `ca9e2c6` docs(testing): refresh acceptance evidence after the review fixes

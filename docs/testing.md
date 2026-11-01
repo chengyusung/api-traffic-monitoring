@@ -61,7 +61,7 @@ docker compose exec api ruff check . && docker compose exec api ruff format --ch
 | DEP-01 | 一鍵啟動 | 乾淨 clone → `docker compose up --build` → ready 200、`/docs`、UI 登入 | PASS | `docker compose up --build -d --wait`（exit 0）；ready 200、`/docs` 200、三個帳號 `/auth/token` 與 `/auth/me` 皆 200，角色為 ADMIN / USER / VIEWER。登入以 API 驗證，沒有在瀏覽器操作 UI；驗收在 worktree 內執行，不是乾淨 clone |
 | DEP-02 | Volume 持久化 | `down` 後 `up` 資料仍在 | PASS | `docker compose down` 再 `up -d --wait`；volume `db-data` 仍在，`GET /records/97` 回 200，title 與寫入時相同（down / up 的 exit code 經 `tail` 讀取，未單獨記錄，以輸出為證） |
 | DEP-03a | 測試庫初始化（全新 volume） | 全新 volume：`traffic_test` 存在 | PASS | `docker compose down -v`（exit 0）、`up --build -d --wait`（exit 0）；`SHOW DATABASES` 列出 `traffic_test`，ready 200 |
-| DEP-03b | 測試庫初始化（既有 volume） | 既有 volume：`traffic_test` 不存在，`down -v` 後存在（initdb 只跑一次） | PASS | 2026-11-01，commit f31f41f：用不掛載 `db/init` 的 override 在 `db-data` 上 `up -d --wait db`（exit 0），`SHOW DATABASES` 只有 `traffic`、沒有 `traffic_test`；`stop db` 後在同一個 volume 上 `up --build -d --wait`（exit 0），`SHOW DATABASES` 仍然沒有 `traffic_test`（`pytest tests/api/test_health.py` 在 setup 失敗：`Access denied for user 'traffic'@'%' to database 'traffic_test'`）；`down -v` 後 `up --build -d --wait`（exit 0），`SHOW DATABASES` 列出 `traffic_test`，`/health/ready` 200 |
+| DEP-03b | 測試庫初始化（既有 volume） | 既有 volume：`traffic_test` 不存在，`down -v` 後存在（initdb 只跑一次） | PASS | 2026-11-01，commit e2bd097：用不掛載 `db/init` 的 override 在 `db-data` 上 `up -d --wait db`（exit 0），`SHOW DATABASES` 只有 `traffic`、沒有 `traffic_test`；`stop db` 後在同一個 volume 上 `up --build -d --wait`（exit 0），`SHOW DATABASES` 仍然沒有 `traffic_test`（`pytest tests/api/test_health.py` 在 setup 失敗：`Access denied for user 'traffic'@'%' to database 'traffic_test'`）；`down -v` 後 `up --build -d --wait`（exit 0），`SHOW DATABASES` 列出 `traffic_test`，`/health/ready` 200 |
 | AUTH-01 | VIEWER 不可寫 | `POST /records` → 403，DB 不變 | PASS | viewer `POST /api/v1/records` 回 403，筆數前後都是 99 |
 | AUTH-02 | Ownership | USER A 改 USER B 的 record → 404 | PASS | admin 建立 record 後，USER `PATCH` 與 `DELETE` 皆回 404 |
 | AUTH-03 | 不可自行升權 | register `role=ADMIN` → 422 | PASS | register 帶 `role=ADMIN` 回 422；不帶 role 回 201、`role=USER`、body 無 `password_hash` |
@@ -79,9 +79,9 @@ docker compose exec api ruff check . && docker compose exec api ruff format --ch
 | ANA-02 | Excel | 下載檔案可開、列數與 filter 一致 | PASS | `/analytics/export?service=payment` 回 200，xlsx 28,380 bytes；openpyxl 3.1.5 開啟，198 列，扣標頭 = 197 = count；title 為 `=HYPERLINK(...)` 的資料列匯出後 sheet1.xml 沒有 `<f>` 元素，儲存格是文字 |
 | ADM-01 | Admin 管理 | 改角色生效於下一個 request；停用自己 / 最後 ADMIN → 422 | PASS | viewer 改為 USER 後，舊 token `POST /records` 從 403 變 201，改回後 403；停用或降級自己回 422；`/admin/logs?event_type=user.updated` total 2；`/admin/system` 含 `pool` 與 `table_counts`。live 只驗證停用或降級自己 422（唯一的 ADMIN 只能以自己為對象）；兩個 ADMIN 並行互相降級的規則沒有在驗收執行，只由 integration test 覆蓋 |
 
-環境：macOS，Podman 5.7 經由 docker CLI 執行 `docker compose`，MariaDB 11.7。除 DEP-03b 外，所有 PASS 的 commit 是 `bcaf2eb`（M04 與 M05 修正後），日期 2026-11-01（stack 時鐘 2026-10-31 UTC）；DEP-03b 仍是 `f31f41f`。Docker Engine 沒有在本機測過。測試數量：後端 394 個（pytest 收集：`-k timezone` 2 passed + 392 deselected，在 api 容器內），前端 17 個（主機上跑 unittest）。
+環境：macOS，Podman 5.7 經由 docker CLI 執行 `docker compose`，MariaDB 11.7。除 DEP-03b 外，所有 PASS 的 commit 是 `11c00dc`（M04 與 M05 修正後），日期 2026-11-01（stack 時鐘 2026-10-31 UTC）；DEP-03b 仍是 `e2bd097`。Docker Engine 沒有在本機測過。測試數量：後端 394 個（pytest 收集：`-k timezone` 2 passed + 392 deselected，在 api 容器內），前端 17 個（主機上跑 unittest）。
 
-驗收結果：19 個案例完整 PASS（DEP-03 的 a 在 bcaf2eb、b 在 f31f41f，兩半都 PASS），0 個 FAIL，另有 CI-01 尚未執行（GitHub Actions 在 push 之後才會跑，workflow 是 `.github/workflows/ci.yml`）。
+驗收結果：19 個案例完整 PASS（DEP-03 的 a 在 11c00dc、b 在 e2bd097，兩半都 PASS），0 個 FAIL，另有 CI-01 尚未執行（GitHub Actions 在 push 之後才會跑，workflow 是 `.github/workflows/ci.yml`）。
 
 | ID | 狀態 | 備註 |
 |---|---|---|
