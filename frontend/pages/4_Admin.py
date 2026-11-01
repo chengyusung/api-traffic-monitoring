@@ -79,6 +79,9 @@ if listing and listing["items"]:
         role = st.selectbox("角色", ROLES, index=ROLES.index(target["role"]))
         is_active = st.toggle("啟用", value=target["is_active"])
         save_user = st.form_submit_button("儲存使用者")
+        st.caption(
+            "變更立即對 API 生效；該使用者要重新登入，Streamlit 畫面才會顯示新的權限控制項。"
+        )
     if save_user:
         edited = {"role": role, "is_active": is_active}
         changes = {k: v for k, v in edited.items() if v != target[k]}

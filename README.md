@@ -291,6 +291,7 @@ docker compose exec api ruff check . && docker compose exec api ruff format --ch
 - Live Monitor 比 Analytics 早約 5 秒（一個 flush interval）；DB 故障時更久。
 - 單一 API worker；多 worker 會複製 Generator。
 - JWT 8 小時、無 refresh / revocation；停用與改角色靠每個 request 重讀 DB 生效。
+- Streamlit UI 在登入時快取角色。Admin 改了某個使用者的角色後，API 從下一個 request 起套用，但該使用者已開啟的 Streamlit session 要重新登入才會看到新的控制項；被降級的使用者仍看得到舊控制項，操作時 API 回 403。
 - 授權每個 request 都查 DB，所以 DB 故障期間所有需認證的端點（含 `/admin/*`）回 503；故障觀察靠不需認證的 `/health/ready` 與 WebSocket `status` 訊息。`/health/ready` 此時也回 503，但 body 仍帶完整計數；readiness 與指標合在一個端點是 MVP 的簡化，production 應拆出 `/metrics`。
 - DB 暫時故障後恢復（不丟資料）與應用程式 crash 後恢復（丟未 commit 資料）是兩件事；本系統只保證前者。
 - WebSocket 斷線區間無 replay；用 Records 的時間區間查詢補看。
